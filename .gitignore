@@ -1,0 +1,89 @@
+# --- Environment & Secrets ---
+.env
+.env.*
+!.env.example
+venv/
+.venv/
+env/
+python-venv/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# --- Frontend (Node/Vite) ---
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/*.local
+frontend/.eslintcache
+frontend/.vite-inspect
+
+# --- Data & Models (IMPORTANT: Storage heavy) ---
+# Ignore everything in src/data/ except the .gitkeep file
+src/data/*
+!src/data/.gitkeep
+# Also ignore data files found anywhere in the repo
+sample_covers/
+*.faiss
+*.npz
+*.parquet
+*.zip
+*.tar.gz
+*.csv
+*.pt
+*.pkl
+*.json
+# Keep important JSONs if they are config, but generally data/profiles have them
+!package.json
+!package-lock.json
+!tsconfig.json
+!composer.json
+!manifest.json
+
+# --- Logs, Reports & Temp ---
+*.log
+*.txt
+rebuild.log
+inspect_output*.txt
+smoke_test_output.txt
+tmp/
+temp/
+*.tmp
+*.temp
+profiling/benchmark_results_*.txt
+profiling/clip_audit_*.txt
+profiling/vi_search_audit_*.txt
+
+# --- IDEs & OS ---
+.vscode/
+.idea/
+.DS_Store
+[Dd]esktop.ini
+[Tt]humbs.db
+*.swp
+*.swo
+
+# --- Jupyter ---
+.ipynb_checkpoints
