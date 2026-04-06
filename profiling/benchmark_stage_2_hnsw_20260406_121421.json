@@ -1,0 +1,66 @@
+{
+  "metadata": {
+    "stage": "stage_2_hnsw",
+    "timestamp": "20260406_121421",
+    "queries": 10,
+    "runs_per_query": 3
+  },
+  "results": {
+    "translate_ms": {
+      "avg": 45.76,
+      "p95": 230.13
+    },
+    "encode_blair_ms": {
+      "avg": 67.26,
+      "p95": 132.44
+    },
+    "encode_clip_ms": {
+      "avg": 0.0,
+      "p95": 0.0
+    },
+    "bm25_ms": {
+      "avg": 1471.06,
+      "p95": 1817.17
+    },
+    "blair_search_ms": {
+      "avg": 1.13,
+      "p95": 1.42
+    },
+    "clip_search_ms": {
+      "avg": 0.0,
+      "p95": 0.0
+    },
+    "rrf_ms": {
+      "avg": 0.08,
+      "p95": 0.1
+    },
+    "meta_filter_ms": {
+      "avg": 0.09,
+      "p95": 0.14
+    },
+    "reranker_ms": {
+      "avg": 0.0,
+      "p95": 0.0
+    },
+    "total_search_engine_ms": {
+      "avg": 1472.57,
+      "p95": 1818.55
+    },
+    "search_engine_total_ms": {
+      "avg": 1472.58,
+      "p95": 1818.56
+    },
+    "metadata_hydration_ms": {
+      "avg": 2.08,
+      "p95": 3.61
+    },
+    "total_ms": {
+      "avg": 1587.7,
+      "p95": 1937.01
+    },
+    "e2e_wall_clock_ms": {
+      "avg": 3617.27,
+      "p95": 3963.47
+    }
+  }
+}
