@@ -61,6 +61,7 @@ sample_covers/
 !tsconfig.json
 !composer.json
 !manifest.json
+!profiling/*.json
 
 # --- Logs, Reports & Temp ---
 *.log

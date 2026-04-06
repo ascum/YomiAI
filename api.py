@@ -316,115 +316,95 @@ def health():
 async def search(req: SearchRequest, debug: bool = False):
     """
     Mode 1: Multimodal Active Search.
-    - If the BLaIR model is loaded, encodes the text query live on the GPU.
-    - If image_base64 is provided and CLIP is loaded, encodes the image live.
-    - Falls back to a proxy-item query if encoders are unavailable.
-    - Pass ?debug=true to receive _debug_timings (ms per stage) in the response.
-    - Vietnamese queries are auto-translated to English via NLLB-1.3B before BLaIR encoding.
-      BM25 keyword scan always uses the original raw query (works natively in Vietnamese).
+    Offloaded to a thread pool to avoid blocking the event loop during heavy GPU/FAISS ops.
     """
+    import anyio
     _require_ready()
+    
+    # Run the heavy computation in a thread pool
+    return await anyio.to_thread.run_sync(_run_search_pipeline, req, debug)
+
+def _run_search_pipeline(req: SearchRequest, debug: bool):
+    """Internal synchronous pipeline executed in a worker thread."""
     retriever     = _state["retriever"]
     search_engine = _state["search_engine"]
 
     t_start = time.perf_counter()
+    timings = {}
 
     # ── Attempt live encoding ──
-    # Ignore the text query if it's just a generic instruction the user typed with an image
     ignore_texts = ["i am looking for books with similar cover like this", "find me a book like this cover", "books with this cover"]
     if req.image_base64 and req.query.lower().strip() in ignore_texts:
         req.query = ""
 
-    # Task 1.3: Translate Vietnamese queries to English before BLaIR encoding.
-    # BM25 keyword scan inside search_engine.search() always uses the ORIGINAL
-    # text_query argument (substring matching works in native Vietnamese).
+    # Task 1.3: Translation
+    t_trans_start = time.perf_counter()
     query_for_encoding = req.query
     if req.query:
         try:
-            from utils import translate_vi_to_en   # src/ is on sys.path via line 34
+            from utils import translate_vi_to_en
             translated = translate_vi_to_en(req.query)
             if translated != req.query:
                 log.info(f"[Translation] '{req.query}' → '{translated}'")
             query_for_encoding = translated
         except Exception as e:
             log.warning(f"[Translation] Hook failed, using original query: {e}")
-            # always fall back — never break search due to translation error
+    timings["translate_ms"] = round((time.perf_counter() - t_trans_start) * 1000, 2)
 
-    # Stage 1: BLaIR text encoding (uses translated query for dense retrieval)
+    # Stage 1: BLaIR text encoding
     t0 = time.perf_counter()
     text_vec  = _encode_text_query(query_for_encoding) if query_for_encoding else None
-    t1 = time.perf_counter()
+    timings["encode_blair_ms"] = round((time.perf_counter() - t0) * 1000, 2)
 
     # Stage 2: CLIP image encoding
+    t1 = time.perf_counter()
     image_vec = _encode_image_b64(req.image_base64)   if req.image_base64 else None
-    t2 = time.perf_counter()
+    timings["encode_clip_ms"] = round((time.perf_counter() - t1) * 1000, 2)
 
-    # ── Proxy fallback if nothing could be encoded ──
     if text_vec is None and image_vec is None:
-        log.info("No live encoding available — using proxy query item.")
         text_vec, image_vec = _proxy_query_vecs()
 
-    # Stage 3: FAISS search + adaptive RRF (inside search_engine.search)
-    t3 = time.perf_counter()
-    results = search_engine.search(
+    # Stage 3: FAISS search + adaptive RRF
+    t2 = time.perf_counter()
+    search_results = search_engine.search(
         "web_user",
         text_query_vec=text_vec,
         image_query_vec=image_vec,
-        text_query=req.query,      # raw string for BGE cross-encoder reranking
+        text_query=req.query,
         top_k=req.top_k,
+        include_timings=True,
     )
-    t4 = time.perf_counter()
+    results, engine_timings = search_results
+    timings.update(engine_timings)
+    timings["search_engine_total_ms"] = round((time.perf_counter() - t2) * 1000, 2)
 
-    # Stage 4: Metadata hydration (parquet lookups)
+    # Stage 4: Metadata hydration
+    t3 = time.perf_counter()
     enriched = []
     for asin, data in results:
         details = _get_item_details(asin)
         details["score"]    = data['score']
-        details["text_sim"] = max(0.0, float(data['text_sim']))  # Clamp neg to 0 for UI
+        details["text_sim"] = max(0.0, float(data['text_sim']))
         details["img_sim"]  = max(0.0, data['img_sim'])
         if "reranker_score" in data:
             details["reranker_score"] = data["reranker_score"]
         enriched.append(details)
-    t5 = time.perf_counter()
+    timings["metadata_hydration_ms"] = round((time.perf_counter() - t3) * 1000, 2)
+    timings["total_ms"] = round((time.perf_counter() - t_start) * 1000, 2)
 
-    # ── Task 1.2: Empty-results graceful response ──────────────────────────────
     if not enriched:
-        log.info(f"Search returned 0 results for query: '{req.query}'")
         response = {
             "results": [],
             "query":   req.query,
-            "message": "No sufficiently relevant results found. Try rephrasing your query or using different keywords.",
+            "message": "No sufficiently relevant results found.",
             "total":   0,
             "live_encoding": text_vec is not None,
         }
-        if debug:
-            response["_debug_timings"] = {
-                "encode_blair_ms": round((t1 - t0) * 1000, 1),
-                "encode_clip_ms":  round((t2 - t1) * 1000, 1),
-                "faiss_rrf_rerank_ms": round((t4 - t3) * 1000, 1),
-                "metadata_hydration_ms": round((t5 - t4) * 1000, 1),
-                "total_ms": round((t5 - t_start) * 1000, 1),
-            }
+        if debug: response["_debug_timings"] = timings
         return response
 
     response = {"results": enriched, "total": len(enriched), "live_encoding": text_vec is not None}
-
-    if debug:
-        response["_debug_timings"] = {
-            "encode_blair_ms":       round((t1 - t0) * 1000, 1),
-            "encode_clip_ms":        round((t2 - t1) * 1000, 1),
-            "faiss_rrf_rerank_ms":   round((t4 - t3) * 1000, 1),
-            "metadata_hydration_ms": round((t5 - t4) * 1000, 1),
-            "total_ms":              round((t5 - t_start) * 1000, 1),
-        }
-        log.info(
-            f"[TIMING] blair={response['_debug_timings']['encode_blair_ms']}ms  "
-            f"clip={response['_debug_timings']['encode_clip_ms']}ms  "
-            f"faiss+rerank={response['_debug_timings']['faiss_rrf_rerank_ms']}ms  "
-            f"hydrate={response['_debug_timings']['metadata_hydration_ms']}ms  "
-            f"TOTAL={response['_debug_timings']['total_ms']}ms"
-        )
-
+    if debug: response["_debug_timings"] = timings
     return response
 
 
