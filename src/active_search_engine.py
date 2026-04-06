@@ -35,161 +35,98 @@ class ActiveSearchEngine:
         self.reranker        = reranker
         self.metadata_df     = metadata_df
 
-        # BM25 index -- built once at startup from the metadata parquet
-        self.bm25_index = None   # BM25Okapi instance or None
-        self.bm25_asins = []     # ASINs aligned to bm25 corpus rows
-        self._build_bm25_index()
+        # Tantivy Rust Index -- loaded from disk
+        self.tantivy_index   = None
+        self.tantivy_searcher = None
+        self._load_tantivy_index()
 
-    # ---- BM25 index construction --------------------------------------------
+    # ---- Tantivy index loading --------------------------------------------
 
-    def _build_bm25_index(self):
-        """
-        Tokenises every book's `title + author_name` and fits a BM25Okapi index.
-        Uses vectorised pandas string ops (no iterrows) -- fast even on 1.73M rows.
-        Called once at __init__ time. Falls back silently if rank_bm25 is missing.
-        """
-        if self.metadata_df is None or len(self.metadata_df) == 0:
-            log.warning("BM25: metadata_df empty -- keyword channel disabled.")
-            return
-
+    def _load_tantivy_index(self):
+        """Loads the pre-built Tantivy Rust index from disk."""
+        import os
         try:
-            from rank_bm25 import BM25Okapi
-        except ImportError:
-            log.warning(
-                "BM25: 'rank_bm25' not installed -- keyword channel disabled. "
-                "Run: pip install rank-bm25"
-            )
-            return
+            import tantivy
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            index_path = os.path.join(base_dir, "data", "tantivy_index")
+            
+            if not os.path.exists(index_path):
+                log.warning(f"Tantivy: Index not found at {index_path}. Keyword channel disabled.")
+                return
 
-        log.info("BM25: building keyword index (vectorised)...")
-        meta = self.metadata_df
-
-        # 1. Filter to ASINs present in the FAISS index (single set lookup)
-        faiss_set  = set(self.retriever.asin_to_idx.keys())
-        meta_valid = meta[meta.index.isin(faiss_set)]
-
-        if meta_valid.empty:
-            log.warning("BM25: no overlap between metadata and FAISS index -- disabled.")
-            return
-
-        # 2. Build combined title + author Series (no Python loop)
-        title_col  = "title"       if "title"       in meta_valid.columns else None
-        author_col = "author_name" if "author_name" in meta_valid.columns else (
-                     "author"      if "author"      in meta_valid.columns else None)
-
-        if title_col:
-            combined = meta_valid[title_col].fillna("").astype(str)
-        else:
-            combined = meta_valid.index.to_series().str[:0]  # empty Series
-
-        if author_col:
-            authors = meta_valid[author_col].fillna("").astype(str)
-            # Blank out placeholder strings before concat
-            bad_mask = authors.str.lower().isin({"unknown author", "nan", ""})
-            authors  = authors.where(~bad_mask, other="")
-            if title_col:
-                combined = (combined + " " + authors).str.strip()
-            else:
-                combined = authors.str.strip()
-        else:
-            combined = combined.str.strip()
-
-        # 3. Drop empty rows
-        non_empty   = combined.str.len() > 0
-        combined    = combined[non_empty]
-        valid_asins = combined.index.tolist()
-
-        if not valid_asins:
-            log.warning("BM25: corpus empty after filtering -- keyword channel disabled.")
-            return
-
-        # 4. Vectorised tokenisation: lower -> strip punctuation -> split
-        tokenised = (
-            combined
-            .str.lower()
-            .str.replace(r"[^a-z0-9\s]", "", regex=True)
-            .str.split()
-            .tolist()
-        )
-
-        # Drop rows that became empty after tokenisation
-        pairs = [(a, toks) for a, toks in zip(valid_asins, tokenised) if toks]
-        if not pairs:
-            log.warning("BM25: all tokens empty after normalisation -- disabled.")
-            return
-
-        corpus_asins, corpus_docs = zip(*pairs)
-        self.bm25_index = BM25Okapi(list(corpus_docs))
-        self.bm25_asins = list(corpus_asins)
-        log.info(f"BM25 index built: {len(self.bm25_asins):,} documents indexed.")
-
-    # ---- Text normalisation -------------------------------------------------
+            self.tantivy_index = tantivy.Index.open(index_path)
+            self.tantivy_searcher = self.tantivy_index.searcher()
+            log.info("Tantivy Rust keyword index loaded ✓")
+        except Exception as e:
+            log.error(f"Tantivy: failed to load: {e}")
 
     @staticmethod
     def _tokenize(text: str) -> list:
         """
         Lowercase + strip all non-alphanumeric chars, then split.
-        Examples:
-          "Jojo's Bizarre Adventure" -> ["jojos", "bizarre", "adventure"]
-          "A Court of Thorns & Roses" -> ["a", "court", "of", "thorns", "roses"]
-          "Spider-Man: No Way Home"   -> ["spiderman", "no", "way", "home"]
         """
+        import re
         if not text:
             return []
-        cleaned = re.sub(r"[^a-z0-9\s]", "", text.lower())
+        cleaned = re.sub(r"[^a-z0-9\s]", "", str(text).lower())
         return [tok for tok in cleaned.split() if tok]
 
     # ---- BM25 search --------------------------------------------------------
 
     def _bm25_search(self, query: str) -> tuple:
         """
-        Run the BM25 query. Returns (hits, confidence).
-
-        hits       : list of (asin, bm25_score) sorted desc, capped at BM25_TOP_N.
-        confidence : float in [0.0, 1.0].
-                     High = clear title/author match (keyword channel should dominate).
-                     Low  = no clear keyword match, fall back to semantic.
+        Run the high-speed Tantivy Rust query. Returns (hits, confidence).
         """
-        if self.bm25_index is None or not query:
+        if self.tantivy_searcher is None:
+            return [], 0.0
+        if not query:
             return [], 0.0
 
-        tokens = self._tokenize(query)
-        if not tokens:
-            return [], 0.0
-
-        scores = self.bm25_index.get_scores(tokens)
-
-        top_score = float(scores.max()) if len(scores) else 0.0
-        if top_score < BM25_MIN_SCORE:
-            return [], 0.0
-
-        # Confidence = absolute score heuristic. 
-        # On a 1.7M row corpus, exact word matches yield roughly +5.0 to +25.0 score.
-        # Rare words ("jojo"): ~19.6
-        # Common words ("fantasy", "magic"): ~7.0
-        # We calculate confidence based on average score per query token. By requiring ~15.0 pts
-        # per word, only highly specific/rare title words trigger high confidence.
-        BM25_EXPECTED_SCORE_PER_WORD = 15.0
-        expected_score = len(tokens) * BM25_EXPECTED_SCORE_PER_WORD
+        import re
+        # Clean and keep only meaningful words (length > 1)
+        clean_q = re.sub(r"[^\w\s]", " ", query).strip()
+        tokens = [t for t in clean_q.split() if len(t) > 1]
+        if not tokens: tokens = clean_q.split()
         
-        confidence = min(1.0, top_score / expected_score)
+        # USE "OR" LOGIC: This is the critical fix for book titles.
+        # "jojo bizarre" -> "jojo OR bizarre"
+        or_query_str = " OR ".join(tokens)
 
-        # Collect top-N ASIN hits, filtered to metadata index
-        top_indices = np.argsort(scores)[::-1][:BM25_TOP_N * 2]
-        hits = []
-        meta_ok = self.metadata_df is not None
-        for idx in top_indices:
-            if len(hits) >= BM25_TOP_N:
-                break
-            asin  = self.bm25_asins[idx]
-            score = float(scores[idx])
-            if score < BM25_MIN_SCORE:
-                break
-            if meta_ok and asin not in self.metadata_df.index:
-                continue
-            hits.append((asin, score))
+        try:
+            query_parser = self.tantivy_index.parse_query(or_query_str, ["title", "author"])
+            search_results = self.tantivy_searcher.search(query_parser, limit=BM25_TOP_N)
+            
+            if not search_results.hits:
+                return [], 0.0
 
-        return hits, confidence
+            hits = []
+            top_score = float(search_results.hits[0][0])
+            
+            for score, doc_address in search_results.hits:
+                doc = self.tantivy_searcher.doc(doc_address)
+                # Raw string from Tantivy (identical to Parquet after map(str))
+                asin_str = str(doc["asin"][0])
+                
+                # Direct string lookup confirmed by forensic script
+                if self.metadata_df is not None and asin_str not in self.metadata_df.index:
+                    continue
+                    
+                hits.append((asin_str, float(score)))
+
+            if not hits:
+                return [], 0.0
+
+            # Confidence Logic
+            num_tokens = len(tokens)
+            EXPECTED_PER_WORD = 10.0
+            confidence = min(1.0, top_score / (num_tokens * EXPECTED_PER_WORD))
+
+            log.info(f"[SUCCESS] Tantivy: Found {len(hits)} valid hits | Top: {top_score:.2f} | Conf: {confidence:.2f}")
+            return hits, confidence
+
+        except Exception as e:
+            print(f"[ERROR] Tantivy search error: {e}")
+            return [], 0.0
 
     # ---- Adaptive Weighted RRF ----------------------------------------------
 

@@ -1,0 +1,66 @@
+{
+  "metadata": {
+    "stage": "stage_6_greedy_parallel",
+    "timestamp": "20260406_182623",
+    "queries": 10,
+    "runs_per_query": 3
+  },
+  "results": {
+    "translate_ms": {
+      "avg": 44.45,
+      "p95": 193.58
+    },
+    "encode_blair_ms": {
+      "avg": 17.35,
+      "p95": 39.09
+    },
+    "encode_clip_ms": {
+      "avg": 0.0,
+      "p95": 0.0
+    },
+    "bm25_ms": {
+      "avg": 4.54,
+      "p95": 9.37
+    },
+    "blair_search_ms": {
+      "avg": 0.87,
+      "p95": 1.02
+    },
+    "clip_search_ms": {
+      "avg": 0.0,
+      "p95": 0.0
+    },
+    "rrf_ms": {
+      "avg": 0.05,
+      "p95": 0.06
+    },
+    "meta_filter_ms": {
+      "avg": 0.08,
+      "p95": 0.1
+    },
+    "reranker_ms": {
+      "avg": 0.0,
+      "p95": 0.0
+    },
+    "total_search_engine_ms": {
+      "avg": 5.65,
+      "p95": 10.51
+    },
+    "search_engine_total_ms": {
+      "avg": 5.65,
+      "p95": 10.51
+    },
+    "metadata_hydration_ms": {
+      "avg": 1.31,
+      "p95": 1.64
+    },
+    "total_ms": {
+      "avg": 68.77,
+      "p95": 208.16
+    },
+    "e2e_wall_clock_ms": {
+      "avg": 71.33,
+      "p95": 210.7
+    }
+  }
+}

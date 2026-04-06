@@ -3,7 +3,7 @@ import time
 import json
 import numpy as np
 
-API_URL = "http://localhost:8000/search"
+API_URL = "http://127.0.0.1:8000/search"
 
 TEST_QUERIES = [
     "detective mystery novels",
@@ -26,7 +26,7 @@ import sys
 import os
 from datetime import datetime
 
-API_URL = "http://localhost:8000/search"
+API_URL = "http://127.0.0.1:8000/search"
 
 # ... (TEST_QUERIES remains same) ...
 TEST_QUERIES = [

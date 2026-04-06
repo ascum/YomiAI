@@ -198,6 +198,20 @@ function SearchResultCard({ book, onInteract, onAskAI, isNew }) {
     }
   };
 
+  // Safe defaults & Parsers for minimal payload
+  const displayGenre = book.genre || "Books";
+  const displayCoverColor = book.cover_color || "#1e1b4b";
+  
+  // Failsafe for unparsed author dicts
+  let displayAuthor = book.author || "Unknown Author";
+  if (typeof displayAuthor === 'string' && displayAuthor.startsWith('{')) {
+    try {
+      // Try to extract name: 'Name' from stringified dict
+      const match = displayAuthor.match(/'name':\s*'([^']+)'/);
+      if (match) displayAuthor = match[1];
+    } catch(e) {}
+  }
+
   return (
     <div
       className={`flex gap-3 p-3 rounded-lg cursor-pointer group transition-all duration-300`}
@@ -205,22 +219,18 @@ function SearchResultCard({ book, onInteract, onAskAI, isNew }) {
       onMouseEnter={e => e.currentTarget.style.background = "rgba(167,139,250,0.08)"}
       onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.04)"}
     >
-      <BookCover color={book.cover_color} title={book.title} size="md" imageUrl={book.image_url} />
+      <BookCover color={displayCoverColor} title={book.title} size="md" imageUrl={book.image_url} />
       <div className="flex-1 min-w-0">
         <div className="flex items-start justify-between gap-2">
           <div>
             <p className="text-white/90 font-medium leading-tight" style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 13 }}>{book.title}</p>
-            <p className="text-white/40 mt-0.5" style={{ fontSize: 11 }}>{book.author}</p>
-            <span className="inline-block mt-1 px-2 py-0.5 rounded-full text-white/50" style={{ fontSize: 9, background: "rgba(255,255,255,0.06)" }}>{book.genre}</span>
+            <p className="text-white/40 mt-0.5" style={{ fontSize: 11 }}>{displayAuthor}</p>
+            <span className="inline-block mt-1 px-2 py-0.5 rounded-full text-white/50" style={{ fontSize: 9, background: "rgba(255,255,255,0.06)" }}>{displayGenre}</span>
           </div>
           <div className="flex gap-2 flex-shrink-0">
-            {/* <ScoreBadge score={book.text_sim || book.score} label="Text" />
-            <ScoreBadge score={book.img_sim || book.score * 0.95} label="Img" /> */}
-            <ScoreBadge score={book.text_sim !== undefined ? book.text_sim : book.score} label="Text" />
-            <ScoreBadge score={book.img_sim !== undefined ? book.img_sim : book.score * 0.95} label="Img" />
-            {book.reranker_score !== undefined && (
-               <ScoreBadge score={book.reranker_score} label="Rerank" />
-            )}
+            <ScoreBadge score={book.score} label="Match" />
+            {book.text_sim !== undefined && book.text_sim > 0 && <ScoreBadge score={book.text_sim} label="Text" />}
+            {book.img_sim !== undefined && book.img_sim > 0 && <ScoreBadge score={book.img_sim} label="Img" />}
           </div>
         </div>
         <div className="flex gap-2 mt-2">
@@ -267,7 +277,7 @@ function SearchResultCard({ book, onInteract, onAskAI, isNew }) {
             >
               <div className="flex flex-col gap-1 mb-3">
                 <span className="text-white font-bold" style={{ fontSize: 14 }}>{book.title}</span>
-                <span className="text-indigo-300" style={{ fontSize: 11 }}>by {book.author}</span>
+                <span className="text-indigo-300" style={{ fontSize: 11 }}>by {displayAuthor}</span>
               </div>
               <div style={{ fontSize: 11, color: "rgba(255,255,255,0.85)", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
                 {aiLoading ? <span className="shimmer text-indigo-200/50">Thinking...</span> :
@@ -315,6 +325,16 @@ function RecommendCard({ book, onInteract, onAskAI, rank }) {
     }
   };
 
+  // Safe defaults
+  const displayCoverColor = book.cover_color || "#1e1b4b";
+  let displayAuthor = book.author || "Unknown Author";
+  if (typeof displayAuthor === 'string' && displayAuthor.startsWith('{')) {
+    try {
+      const match = displayAuthor.match(/'name':\s*'([^']+)'/);
+      if (match) displayAuthor = match[1];
+    } catch(e) {}
+  }
+
   return (
     <div
       className="flex gap-3 p-3 rounded-lg cursor-pointer group transition-all duration-300"
@@ -324,14 +344,14 @@ function RecommendCard({ book, onInteract, onAskAI, rank }) {
     >
       <div className="flex flex-col items-center gap-2">
         <span className="text-white/20 font-mono font-bold" style={{ fontSize: 10 }}>#{rank + 1}</span>
-        <BookCover color={book.cover_color} title={book.title} size="sm" imageUrl={book.image_url} />
+        <BookCover color={displayCoverColor} title={book.title} size="sm" imageUrl={book.image_url} />
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-white/85 font-medium" style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 12 }}>{book.title}</p>
-        <p className="text-white/35 mt-0.5" style={{ fontSize: 10 }}>{book.author}</p>
+        <p className="text-white/35 mt-0.5" style={{ fontSize: 10 }}>{displayAuthor}</p>
         <div className="flex items-center gap-2 mt-1.5">
           {book.layer && <LayerTag label={book.layer} />}
-          <span className="text-white/30 font-mono" style={{ fontSize: 9 }}>match: {Math.min(99, Math.max(60, Math.floor(book.score * 800 + 50)))}%</span>
+          <span className="text-white/30 font-mono" style={{ fontSize: 9 }}>match: {Math.min(99, Math.max(60, Math.floor((book.score || 0.5) * 80 + 15)))}%</span>
         </div>
         <div className="flex gap-1.5 mt-2">
           <button
@@ -377,7 +397,7 @@ function RecommendCard({ book, onInteract, onAskAI, rank }) {
             >
               <div className="flex flex-col gap-1 mb-2">
                 <span className="text-white font-bold" style={{ fontSize: 12 }}>{book.title}</span>
-                <span className="text-indigo-300" style={{ fontSize: 10 }}>by {book.author}</span>
+                <span className="text-indigo-300" style={{ fontSize: 10 }}>by {displayAuthor}</span>
               </div>
               <div style={{ fontSize: 10, color: "rgba(255,255,255,0.85)", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
                 {aiLoading ? <span className="shimmer text-indigo-200/50">Thinking...</span> :
@@ -416,7 +436,7 @@ export default function App() {
   const [rlMetrics, setRlMetrics] = useState({ loss_history: [], buffer_size: 0, step: 0 });
   const [lastTrained, setLastTrained] = useState(null);
   const [toasts, setToasts] = useState([]);
-  const [useMock, setUseMock] = useState(true);
+  const [useMock, setUseMock] = useState(false);
   const [activeTab, setActiveTab] = useState("search");
   const [isDark, setIsDark] = useState(true);
   const [activeRightTab, setActiveRightTab] = useState("profile");
