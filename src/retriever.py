@@ -14,8 +14,20 @@ class Retriever:
         self.asin_to_idx = {asin: i for i, asin in enumerate(self.asins)}
         
         # Load Content Indices with Memory Mapping to save RAM
-        self.blair_index = faiss.read_index(os.path.join(base_dir, "blair_index.faiss"), faiss.IO_FLAG_MMAP)
-        self.clip_index = faiss.read_index(os.path.join(base_dir, "clip_index.faiss"), faiss.IO_FLAG_MMAP)
+        blair_hnsw = os.path.join(base_dir, "blair_index_hnsw.faiss")
+        clip_hnsw  = os.path.join(base_dir, "clip_index_hnsw.faiss")
+        
+        if os.path.exists(blair_hnsw):
+            print(f"Loading HNSW BLaIR index: {blair_hnsw}")
+            self.blair_index = faiss.read_index(blair_hnsw, faiss.IO_FLAG_MMAP)
+        else:
+            self.blair_index = faiss.read_index(os.path.join(base_dir, "blair_index.faiss"), faiss.IO_FLAG_MMAP)
+            
+        if os.path.exists(clip_hnsw):
+            print(f"Loading HNSW CLIP index: {clip_hnsw}")
+            self.clip_index = faiss.read_index(clip_hnsw, faiss.IO_FLAG_MMAP)
+        else:
+            self.clip_index = faiss.read_index(os.path.join(base_dir, "clip_index.faiss"), faiss.IO_FLAG_MMAP)
         
         # Behavioral Index
         self.cleora_index = None

@@ -239,26 +239,28 @@ class ActiveSearchEngine:
         image_query_vec=None,
         text_query: str = "",
         top_k=TOP_K,
+        include_timings=False,
     ):
         """
         Unified hybrid search with adaptive weighting.
 
         All three retrieval channels (BM25, BLaIR, CLIP) feed into a single
-        Adaptive Weighted RRF pass whose weights are computed on-the-fly:
-
-          kw_weight       = BM25 confidence    (0 -> 1)
-          semantic_weight = 1.0 - kw*0.8       (min 0.2, always contributes)
-          visual_weight   = 1.0 + BOOST if image else 0.0
-
-        BGE cross-encoder always post-processes the top-20 for maximum precision.
+        Adaptive Weighted RRF pass whose weights are computed on-the-fly.
         """
+        import time
+        timings = {}
+        t_start = time.perf_counter()
+
         has_text  = text_query_vec  is not None
         has_image = image_query_vec is not None
 
         # Step 0: BM25 keyword search
+        t0 = time.perf_counter()
         bm25_hits, kw_conf = self._bm25_search(text_query) if text_query else ([], 0.0)
+        timings["bm25_ms"] = round((time.perf_counter() - t0) * 1000, 2)
 
         # Step 1: BLaIR semantic search
+        t1 = time.perf_counter()
         blair_results = []
         if has_text:
             D, I = self.retriever.blair_index.search(
@@ -268,8 +270,10 @@ class ActiveSearchEngine:
                 (self.retriever.asins[i], float(D[0][idx]))
                 for idx, i in enumerate(I[0]) if i != -1
             ]
+        timings["blair_search_ms"] = round((time.perf_counter() - t1) * 1000, 2)
 
         # Step 2: CLIP image search
+        t2 = time.perf_counter()
         clip_results = []
         if has_image:
             D, I = self.retriever.clip_index.search(
@@ -279,13 +283,9 @@ class ActiveSearchEngine:
                 (self.retriever.asins[i], float(D[0][idx]))
                 for idx, i in enumerate(I[0]) if i != -1
             ]
+        timings["clip_search_ms"] = round((time.perf_counter() - t2) * 1000, 2)
 
         # Step 3: Compute adaptive channel weights
-        #
-        # kw_conf = 1.0  -> exact title hit; BM25 dominates, BLaIR at 0.2x
-        # kw_conf = 0.0  -> concept query;   BM25 weight=0, BLaIR at full 1.0x
-        # has_image      -> CLIP added with a boost so visual stays influential
-        #
         kw_weight       = kw_conf
         semantic_weight = 1.0 - kw_weight * 0.8  # always at least 0.2
         visual_weight   = (1.0 + BM25_VISUAL_BOOST) if has_image else 0.0
@@ -298,6 +298,7 @@ class ActiveSearchEngine:
         )
 
         # Step 4: Adaptive Weighted RRF
+        t3 = time.perf_counter()
         channels = [
             ("bm25",  bm25_hits,     kw_weight),
             ("blair", blair_results, semantic_weight),
@@ -307,6 +308,7 @@ class ActiveSearchEngine:
         # Guard: nothing produced results at all
         if not any(items for _, items, w in channels if w > 0):
             log.warning("Search: all retrieval channels empty -- returning []")
+            if include_timings: return [], timings
             return []
 
         # Edge-case: encoder offline but BM25 confident -- use BM25 alone
@@ -319,15 +321,19 @@ class ActiveSearchEngine:
             ]
         else:
             final_ranking = self._adaptive_rrf(channels)
+        timings["rrf_ms"] = round((time.perf_counter() - t3) * 1000, 2)
 
         # Step 5: Metadata filter -- drop ghost ASINs not in parquet
+        t4 = time.perf_counter()
         if self.metadata_df is not None:
             final_ranking = [
                 (asin, data) for asin, data in final_ranking
                 if asin in self.metadata_df.index
             ]
+        timings["meta_filter_ms"] = round((time.perf_counter() - t4) * 1000, 2)
 
         # Step 6: BGE Reranker (text-query path only)
+        t5 = time.perf_counter()
         if (
             self.reranker is not None
             and self.reranker.is_ready
@@ -343,6 +349,7 @@ class ActiveSearchEngine:
             )
         else:
             final_ranking = final_ranking[:top_k]
+        timings["reranker_ms"] = round((time.perf_counter() - t5) * 1000, 2)
 
         # Log to user profile
         result_items = [asin for asin, _ in final_ranking]
@@ -352,5 +359,9 @@ class ActiveSearchEngine:
             "SIMULATED_IMAGE" if has_image else None,
             result_items,
         )
+
+        if include_timings:
+            timings["total_search_engine_ms"] = round((time.perf_counter() - t_start) * 1000, 2)
+            return final_ranking, timings
 
         return final_ranking
