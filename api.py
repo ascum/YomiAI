@@ -84,7 +84,15 @@ async def lifespan(app: FastAPI):
     try:
         meta_path = os.path.join(DATA_DIR, "item_metadata.parquet")
         metadata_df = pd.read_parquet(meta_path)
-        metadata_df.set_index("parent_asin", inplace=True)
+        
+        # CRITICAL: Force ASINs to strings. 
+        # Forensic script proved simple map(str) works best for this parquet.
+        if "parent_asin" in metadata_df.columns:
+            metadata_df["parent_asin"] = metadata_df["parent_asin"].astype(str)
+            metadata_df.set_index("parent_asin", inplace=True)
+        else:
+            metadata_df.index = metadata_df.index.map(str)
+        
         _state["metadata_df"] = metadata_df
         log.info(f"Metadata loaded: {len(metadata_df):,} items")
     except Exception as e:
@@ -136,8 +144,8 @@ async def lifespan(app: FastAPI):
         metadata_df=_state["metadata_df"],
     )
     _state["search_engine"] = search_engine
-    bm25_status = "ready ✓" if search_engine.bm25_index is not None else "disabled (rank_bm25 not installed)"
-    log.info(f"Search engine ready ✓  |  BM25 keyword index: {bm25_status}")
+    bm25_status = "ready ✓ (Tantivy Rust)" if search_engine.tantivy_index is not None else "disabled (index not found)"
+    log.info(f"Search engine ready ✓  |  Keyword index: {bm25_status}")
 
     # 6. Qwen2.5-1.5B-Instruct — lazy-loaded on first /ask_llm call
     # Not pre-loaded at startup to keep VRAM free for NLLB translation model.
