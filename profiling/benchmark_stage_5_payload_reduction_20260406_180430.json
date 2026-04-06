@@ -1,0 +1,66 @@
+{
+  "metadata": {
+    "stage": "stage_5_payload_reduction",
+    "timestamp": "20260406_180430",
+    "queries": 10,
+    "runs_per_query": 3
+  },
+  "results": {
+    "translate_ms": {
+      "avg": 38.7,
+      "p95": 179.88
+    },
+    "encode_blair_ms": {
+      "avg": 15.63,
+      "p95": 18.44
+    },
+    "encode_clip_ms": {
+      "avg": 0.0,
+      "p95": 0.0
+    },
+    "bm25_ms": {
+      "avg": 4.35,
+      "p95": 9.3
+    },
+    "blair_search_ms": {
+      "avg": 0.96,
+      "p95": 1.35
+    },
+    "clip_search_ms": {
+      "avg": 0.0,
+      "p95": 0.0
+    },
+    "rrf_ms": {
+      "avg": 0.06,
+      "p95": 0.07
+    },
+    "meta_filter_ms": {
+      "avg": 0.08,
+      "p95": 0.13
+    },
+    "reranker_ms": {
+      "avg": 0.0,
+      "p95": 0.01
+    },
+    "total_search_engine_ms": {
+      "avg": 5.55,
+      "p95": 10.35
+    },
+    "search_engine_total_ms": {
+      "avg": 5.55,
+      "p95": 10.36
+    },
+    "metadata_hydration_ms": {
+      "avg": 1.53,
+      "p95": 3.8
+    },
+    "total_ms": {
+      "avg": 61.42,
+      "p95": 195.72
+    },
+    "e2e_wall_clock_ms": {
+      "avg": 64.27,
+      "p95": 198.06
+    }
+  }
+}

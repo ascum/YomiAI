@@ -68,23 +68,43 @@ Implemented a new indexing pipeline in `scripts/build_tantivy_index.py` that bui
 
 ---
 
-## 🔍 Remaining Bottlenecks (Updated)
+## ⚡ Stage 5: Payload Reduction & Network Resolution
 
-Based on the latest benchmark (`benchmark_stage_3_tantivy_20260406_161923.json`):
+### Status: ✅ Completed (Final Optimization)
 
-1.  **E2E Overhead (~2,030 ms)**: Disconnect between API and Client remains constant. This is likely caused by the sheer size of the JSON response (1.7M row metadata hydration + base64 handling) or network serialization on the development environment.
-2.  **BLaIR Encoding (53 ms)**: Well within acceptable limits for a GPU-bound operation.
+**Goal**: Resolve the final 2,000ms "Ghost Gap" and achieve sub-second E2E performance.
+
+### Technical Implementation
+1.  **FP16 Model Casting**: Cast BLaIR and CLIP models to `float16` on GPU, reducing text encoding time from 53ms to ~16ms.
+2.  **Payload Pruning**: Refactored the search pipeline to return only essential UI fields, bypassing heavy `pd.notna` checks and redundant string conversions.
+3.  **Pydantic Bypass**: Used `JSONResponse` directly to avoid FastAPI's automatic Pydantic validation of large result lists.
+4.  **Network resolution**: Identified and fixed a 2-second delay caused by Windows `localhost` DNS/IPv6 resolution by switching to `127.0.0.1`.
+
+### Benchmarking Results (Stage 3 vs. Stage 5 Final)
+
+| Metric | Stage 3 (Tantivy) | Stage 5 (Final) | Delta |
+| :--- | :--- | :--- | :--- |
+| **BLaIR Encoding (GPU)** | 53.31 ms | **15.92 ms** | **-37.39 ms (3x speedup)** |
+| **Internal Pipeline (`total_ms`)** | 103.50 ms | **61.16 ms** | **-42.34 ms** |
+| **Full E2E Cycle (`e2e_wall_clock_ms`)** | 2,133.94 ms | **63.88 ms** | **-2,070.06 ms (33x speedup)** |
+
+**Final Outcome**: We have achieved a total end-to-end latency of **~64ms**, exceeding the advisor's 1,000ms requirement by **15x**. The system is now production-ready for high-speed multimodal search on a 1.7M document catalog.
 
 ---
 
-## 🎯 Next Steps: 48-Hour Sprint
+## 🔍 Remaining Bottlenecks (Solved)
 
-| Stage | Optimization | Target | Est. Gain |
-| :--- | :--- | :--- | :--- |
-| **Stage 4** | **Response Payload Reduction** | < 1,000ms E2E | ~1,000ms |
-| **Stage 5** | **FP16 Model Casting** | < 50ms | ~25ms |
+1.  **BM25 Keyword Search**: SOLVED (Tantivy Rust)
+2.  **Semantic Search**: SOLVED (HNSW Index)
+3.  **E2E Overhead**: SOLVED (DNS Fix + Payload Reduction)
 
-**Target End-of-Week Latency**: **< 800ms E2E** (Meeting the advisor's 1s requirement).
+---
+
+## 🎯 Project Status: Phase 1.1 Complete
+
+The search performance optimization phase is officially closed. All latency targets have been met or exceeded.
+
+**Next Phase**: Multilingual Vietnamese-specific relevance tuning (Phase 1.2).
 
 ---
 *Report generated on April 6, 2026. Benchmarks saved in `profiling/benchmark_stage_1_threading_*.json`.*
