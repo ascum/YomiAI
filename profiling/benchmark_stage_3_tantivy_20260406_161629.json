@@ -1,6 +1,6 @@
 {
   "metadata": {
-    "stage": "unnamed_stage",
+    "stage": "stage_3_tantivy",
     "timestamp": "20260406_161629",
     "queries": 10,
     "runs_per_query": 3

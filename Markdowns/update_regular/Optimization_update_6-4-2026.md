@@ -47,13 +47,33 @@ Used `scripts/rebuild_hnsw_index.py` to reconstruct 1.7M vectors from existing i
 
 ---
 
+## 🦀 Stage 3: Tantivy Rust Engine (Keyword Optimization)
+
+### Status: ✅ Completed
+
+**Goal**: Replace the pure-Python `rank-bm25` (which accounted for >90% of internal latency) with `tantivy`, a high-performance search engine library written in Rust.
+
+### Technical Implementation
+Implemented a new indexing pipeline in `scripts/build_tantivy_index.py` that builds a schema-backed Rust index of all 1.7M book titles and authors. The `ActiveSearchEngine` was refactored to use `tantivy-py` for sub-millisecond keyword lookups with native stemming and BM25 scoring.
+
+### Benchmarking Results (Stage 2 vs. Stage 3)
+
+| Metric | Stage 2 (HNSW) | Stage 3 (Tantivy) | Delta |
+| :--- | :--- | :--- | :--- |
+| **BM25 Keyword Search** | 1,471.06 ms | **4.28 ms** | **-1,466.78 ms (340x speedup)** |
+| **Internal Pipeline (`total_ms`)** | 1,587.70 ms | **103.50 ms** | **-1,484.20 ms** |
+| **Full E2E Cycle (`e2e_wall_clock_ms`)** | 3,617.27 ms | **2,133.94 ms** | -1,483.33 ms |
+
+**Observation**: Internal processing is now extremely lean (< 110ms total). The keyword search bottleneck has been completely eliminated. However, the ~2,000ms "Ghost Gap" remains the final barrier to sub-second E2E response times.
+
+---
+
 ## 🔍 Remaining Bottlenecks (Updated)
 
-Based on the latest benchmark (`benchmark_stage_2_hnsw_20260406_121421.json`):
+Based on the latest benchmark (`benchmark_stage_3_tantivy_20260406_161923.json`):
 
-1.  **BM25 Keyword Search (1,471 ms)**: Now accounts for **~92%** of internal processing time.
-2.  **BLaIR Encoding (67 ms)**: Stable and within target limits.
-3.  **E2E Overhead (~2,029 ms)**: Disconnect between API and Client remains constant.
+1.  **E2E Overhead (~2,030 ms)**: Disconnect between API and Client remains constant. This is likely caused by the sheer size of the JSON response (1.7M row metadata hydration + base64 handling) or network serialization on the development environment.
+2.  **BLaIR Encoding (53 ms)**: Well within acceptable limits for a GPU-bound operation.
 
 ---
 
@@ -61,9 +81,8 @@ Based on the latest benchmark (`benchmark_stage_2_hnsw_20260406_121421.json`):
 
 | Stage | Optimization | Target | Est. Gain |
 | :--- | :--- | :--- | :--- |
-| **Stage 2** | **HNSW Index Rebuild** | < 50ms | ~570ms |
-| **Stage 3** | **Tantivy/Rust BM25** | < 100ms | ~1,400ms |
-| **Stage 4** | **FP16 Model Casting** | < 50ms | ~25ms |
+| **Stage 4** | **Response Payload Reduction** | < 1,000ms E2E | ~1,000ms |
+| **Stage 5** | **FP16 Model Casting** | < 50ms | ~25ms |
 
 **Target End-of-Week Latency**: **< 800ms E2E** (Meeting the advisor's 1s requirement).
 
