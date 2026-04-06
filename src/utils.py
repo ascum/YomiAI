@@ -142,8 +142,9 @@ def translate_vi_to_en(text: str) -> str:
             output_ids = _nllb_model.generate(
                 **inputs,
                 forced_bos_token_id=forced_bos_token_id,
-                num_beams=4,          # Beam search for better quality
-                max_new_tokens=128,
+                num_beams=1,          # Greedy search is much faster for short queries
+                do_sample=False,
+                max_new_tokens=64,    # Queries are rarely longer than this
             )
 
         translated = _nllb_tokenizer.decode(output_ids[0], skip_special_tokens=True)

@@ -337,26 +337,19 @@ def health():
 async def search(req: SearchRequest, debug: bool = False):
     """
     Mode 1: Multimodal Active Search.
-    Offloaded to a thread pool to avoid blocking the event loop during heavy GPU/FAISS ops.
+    Directly calls the async pipeline which manages its own thread-offloading.
     """
-    import anyio
     _require_ready()
-    
-    # Run the heavy computation in a thread pool
-    return await anyio.to_thread.run_sync(_run_search_pipeline, req, debug)
+    return await _run_search_pipeline(req, debug)
 
-def _run_search_pipeline(req: SearchRequest, debug: bool):
-    """Internal synchronous pipeline executed in a worker thread."""
+async def _run_search_pipeline(req: SearchRequest, debug: bool):
+    """Internal async pipeline handling parallel encoding and search."""
     retriever     = _state["retriever"]
     search_engine = _state["search_engine"]
 
     t_start = time.perf_counter()
     timings = {}
 
-    # ... encoding logic remains same ...
-    # (keeping existing encoding logic for brevity in this replace call, 
-    # but the tool requires the full block if I replace the whole function)
-    
     # ── Attempt live encoding ──
     ignore_texts = ["i am looking for books with similar cover like this", "find me a book like this cover", "books with this cover"]
     if req.image_base64 and req.query.lower().strip() in ignore_texts:
@@ -368,7 +361,9 @@ def _run_search_pipeline(req: SearchRequest, debug: bool):
     if req.query:
         try:
             from utils import translate_vi_to_en
-            translated = translate_vi_to_en(req.query)
+            # Translation is synchronous and model-heavy, but greedy is fast.
+            # Running in thread to be safe.
+            translated = await anyio.to_thread.run_sync(translate_vi_to_en, req.query)
             if translated != req.query:
                 log.info(f"[Translation] '{req.query}' → '{translated}'")
             query_for_encoding = translated
@@ -376,28 +371,41 @@ def _run_search_pipeline(req: SearchRequest, debug: bool):
             log.warning(f"[Translation] Hook failed, using original query: {e}")
     timings["translate_ms"] = round((time.perf_counter() - t_trans_start) * 1000, 2)
 
-    # Stage 1: BLaIR text encoding
-    t0 = time.perf_counter()
-    text_vec  = _encode_text_query(query_for_encoding) if query_for_encoding else None
-    timings["encode_blair_ms"] = round((time.perf_counter() - t0) * 1000, 2)
+    # Stage 1 & 2: Multimodal encoding (Parallelized)
+    text_vec = None
+    image_vec = None
+    
+    async def encode_text_task():
+        nonlocal text_vec
+        t0 = time.perf_counter()
+        # GPU inference is sync, offload to thread
+        text_vec = await anyio.to_thread.run_sync(_encode_text_query, query_for_encoding) if query_for_encoding else None
+        timings["encode_blair_ms"] = round((time.perf_counter() - t0) * 1000, 2)
 
-    # Stage 2: CLIP image encoding
-    t1 = time.perf_counter()
-    image_vec = _encode_image_b64(req.image_base64)   if req.image_base64 else None
-    timings["encode_clip_ms"] = round((time.perf_counter() - t1) * 1000, 2)
+    async def encode_image_task():
+        nonlocal image_vec
+        t1 = time.perf_counter()
+        image_vec = await anyio.to_thread.run_sync(_encode_image_b64, req.image_base64) if req.image_base64 else None
+        timings["encode_clip_ms"] = round((time.perf_counter() - t1) * 1000, 2)
+
+    async with anyio.create_task_group() as tg:
+        tg.start_soon(encode_text_task)
+        tg.start_soon(encode_image_task)
 
     if text_vec is None and image_vec is None:
         text_vec, image_vec = _proxy_query_vecs()
 
     # Stage 3: FAISS search + adaptive RRF
     t2 = time.perf_counter()
-    search_results = search_engine.search(
+    # Offload the heavy Faiss/Tantivy search to a thread pool
+    search_results = await anyio.to_thread.run_sync(
+        search_engine.search,
         "web_user",
-        text_query_vec=text_vec,
-        image_query_vec=image_vec,
-        text_query=req.query,
-        top_k=req.top_k,
-        include_timings=True,
+        text_vec,
+        image_vec,
+        req.query,
+        req.top_k,
+        True # include_timings
     )
     results, engine_timings = search_results
     timings.update(engine_timings)
