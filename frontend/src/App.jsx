@@ -3,25 +3,25 @@ import { useState, useEffect, useRef, useCallback } from "react";
 // ─── API CONFIG ───────────────────────────────────────────────────────────────
 const API_BASE = "http://localhost:8000";
 
-async function apiSearch(query, imageBase64 = null) {
+async function apiSearch(query, imageBase64 = null, sessionId = null) {
   const res = await fetch(`${API_BASE}/search`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ query, image_base64: imageBase64, top_k: 20 }),
+    body: JSON.stringify({ query, image_base64: imageBase64, top_k: 20, session_id: sessionId }),
   });
   return res.json();
 }
 
-async function apiRecommend(userId) {
-  const res = await fetch(`${API_BASE}/recommend?user_id=${userId}`);
+async function apiRecommend(userId, sessionId = null) {
+  const res = await fetch(`${API_BASE}/recommend?user_id=${userId}&session_id=${sessionId}`);
   return res.json();
 }
 
-async function apiInteract(userId, itemId, action) {
+async function apiInteract(userId, itemId, action, sessionId = null) {
   const res = await fetch(`${API_BASE}/interact`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ user_id: userId, item_id: itemId, action }),
+    body: JSON.stringify({ user_id: userId, item_id: itemId, action, session_id: sessionId }),
   });
   return res.json();
 }
@@ -422,7 +422,29 @@ function RecommendCard({ book, onInteract, onAskAI, rank }) {
 
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
 export default function App() {
-  const [userId] = useState("user_demo_01");
+  // ─── AUTH & SESSION ────────────────────────────────────────────────────────
+  const [sessionId] = useState(() => {
+    let id = localStorage.getItem("nba_session_id");
+    if (!id) {
+      id = "sess_" + Math.random().toString(36).substring(2, 15);
+      localStorage.setItem("nba_session_id", id);
+    }
+    return id;
+  });
+
+  const [userId, setUserId] = useState("user_demo_01");
+  const [isGuest, setIsGuest] = useState(false);
+
+  const toggleUserMode = () => {
+    if (isGuest) {
+      setUserId("user_demo_01");
+      setIsGuest(false);
+    } else {
+      setUserId(`guest_${sessionId.substring(5, 11)}`);
+      setIsGuest(true);
+    }
+  };
+
   const [query, setQuery] = useState("");
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
@@ -468,7 +490,7 @@ export default function App() {
             r.readAsDataURL(imageFile);
           });
         }
-        const data = await apiSearch(query, imgB64);
+        const data = await apiSearch(query, imgB64, sessionId);
         setSearchResults(data.results || []);
         addToast(`Found ${data.results?.length} results`, "success");
       }
@@ -488,7 +510,7 @@ export default function App() {
         setRecommendations(MOCK_RECS);
         addToast("Mock recommendations loaded", "success");
       } else {
-        const data = await apiRecommend(userId);
+        const data = await apiRecommend(userId, sessionId);
         setRecommendations(data || { people_also_buy: [], you_might_like: [] });
         addToast("Personalized recommendations loaded", "success");
         try {
@@ -519,7 +541,7 @@ export default function App() {
 
     try {
       if (!useMock) {
-        await apiInteract(userId, book.id, action);
+        await apiInteract(userId, book.id, action, sessionId);
         try {
           const metrics = await apiRlMetrics(userId);
           setRlMetrics(metrics);
@@ -665,6 +687,26 @@ export default function App() {
 
         {/* Controls & Stats */}
         <div className="flex items-center gap-6">
+          {/* User Mode Toggle */}
+          <div className="flex items-center gap-2.5">
+            <button
+              onClick={toggleUserMode}
+              className="px-3 py-1.5 rounded-lg transition-all duration-200 flex items-center gap-2"
+              style={{
+                background: isGuest ? "rgba(167,139,250,0.1)" : "rgba(52,211,153,0.1)",
+                border: `1px solid ${isGuest ? "rgba(167,139,250,0.3)" : "rgba(52,211,153,0.3)"}`,
+                color: isGuest ? "#a78bfa" : "#6ee7b7",
+                fontSize: 12,
+                fontWeight: 600
+              }}
+            >
+              <span style={{ fontSize: 14 }}>{isGuest ? "👤" : "👨‍💻"}</span>
+              {isGuest ? "Guest Mode" : "Demo User"}
+            </button>
+          </div>
+
+          <div style={{ width: 1, height: 28, background: "rgba(255,255,255,0.08)" }} />
+
           {/* Cart, Theme & Mock/Live toggle */}
           <div className="flex items-center gap-2.5">
             <button
