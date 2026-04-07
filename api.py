@@ -62,9 +62,32 @@ _state: dict = {
     "device": None,
 }
 
+# ─── Background Logging Worker ────────────────────────────────────────────────
+async def _log_worker():
+    """Drains the Redis queue into MongoDB in the background."""
+    from database import db
+    import json
+    
+    log.info("Background logging worker started.")
+    while True:
+        try:
+            if db.redis:
+                # BLPOP blocks until an item is available in the 'nba_interactions' list
+                res = await db.redis.blpop("nba_interactions", timeout=5)
+                if res:
+                    _, data_json = res
+                    interaction = json.loads(data_json)
+                    await db.log_interaction(interaction)
+            else:
+                await anyio.sleep(5)
+        except Exception as e:
+            log.error(f"Logger worker error: {e}")
+            await anyio.sleep(2)
+
 # ─── Lifespan: load everything on startup ─────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # ... previous setup code ...
     """Load ML models and indices once at startup."""
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     _state["device"] = device
@@ -155,10 +178,19 @@ async def lifespan(app: FastAPI):
     _state["llm_pipeline"] = None
     log.info("Qwen LLM will lazy-load on first /ask_llm request.")
 
+    # ─── Infrastructure Setup ───
+    from database import db
+    await db.connect()
+    
+    # Start the async logging worker
+    import asyncio
+    _state["log_worker_task"] = asyncio.create_task(_log_worker())
+
     _state["ready"] = True
     log.info("🚀 NBA API is ready!")
     yield
     log.info("Shutting down NBA API…")
+    await db.disconnect()
 
 
 # ─── App ──────────────────────────────────────────────────────────────────────
@@ -180,7 +212,9 @@ class SearchRequest(BaseModel):
 class InteractRequest(BaseModel):
     user_id: str
     item_id: str
-    action: str   # "click" | "skip"
+    action: str   # "click" | "skip" | "cart"
+    session_id: Optional[str] = None
+    source: Optional[str] = "web_ui"
 
 class AskLLMRequest(BaseModel):
     item_id: str
@@ -533,40 +567,55 @@ async def interact(req: InteractRequest):
     """
     Log a user interaction (click or skip), train the RL agent, and persist
     both the profile and the updated DQN weights.
+    Also pushes to Redis queue for permanent logging in MongoDB.
     """
+    import json
+    from datetime import datetime
+    from database import db
+    
     _require_ready()
     profile_manager  = _state["profile_manager"]
     recommend_engine = _state["recommend_engine"]
 
     # ── Capture s_t BEFORE the profile update ────────────────────────────────
-    # This must happen first so the replay buffer stores the true pre-interaction
-    # state for the Bellman target computation: Q*(s_t, a) = r + γ·max Q(s_t+1, ·)
     pre_profile = profile_manager.get_profile(req.user_id)
 
     # ── Determine reward and update profile (s_t → s_t+1) ───────────────────
     if req.action == "cart":
-        # Strongest positive signal — user intends to purchase
         reward = 5.0
         profile_manager.log_click(req.user_id, req.item_id, source="web_ui", action="cart")
     elif req.action == "click":
-        # Normal positive interaction
         reward = 1.0
         profile_manager.log_click(req.user_id, req.item_id, source="web_ui", action="click")
     else:
-        # Skips carry zero reward — not a penalty, just no signal
         reward = 0.0
         profile = profile_manager.get_profile(req.user_id)
         profile.purchases.append({
-            "timestamp": __import__("datetime").datetime.now().isoformat(),
+            "timestamp": datetime.now().isoformat(),
             "item_id": req.item_id,
             "action": "skip",
         })
         profile_manager.save_profile(req.user_id)
 
+    # ── Push to Redis for Async MongoDB Logging ──
+    try:
+        if db.redis:
+            log_entry = {
+                "user_id": req.user_id,
+                "asin": req.item_id,
+                "action": req.action,
+                "timestamp": datetime.now().isoformat(),
+                "session_id": req.session_id,
+                "source": req.source,
+                "is_guest": req.user_id.startswith("guest_") or req.user_id == "web_user"
+            }
+            await db.redis.rpush("nba_interactions", json.dumps(log_entry))
+    except Exception as e:
+        log.error(f"Redis queue push failed: {e}")
+
     # ── Train the RL agent with (s_t, action, reward, s_t+1) ─────────────────
     loss = None
     if pre_profile.text_profile is not None:
-        # Profile was updated above; get_profile now returns s_t+1
         post_profile = profile_manager.get_profile(req.user_id)
         loss = recommend_engine.train_rl(
             pre_profile, req.item_id, reward,
