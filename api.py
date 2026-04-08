@@ -432,8 +432,7 @@ async def _run_search_pipeline(req: SearchRequest, debug: bool):
     # Stage 3: FAISS search + adaptive RRF
     t2 = time.perf_counter()
     # Offload the heavy Faiss/Tantivy search to a thread pool
-    search_results = await anyio.to_thread.run_sync(
-        search_engine.search,
+    search_results = await search_engine.search(
         "web_user",
         text_vec,
         image_vec,
@@ -502,18 +501,16 @@ async def _run_search_pipeline(req: SearchRequest, debug: bool):
 async def recommend(user_id: str):
     """
     Mode 2: 3-Layer NBA Funnel.
-    Cold-start users (< COLD_START_THRESHOLD clicks) receive random catalog items.
-    Warm users go through Cleora → Content Veto → RL-DQN.
+    Cold-start users receive random catalog items. Warm users go through Cleora → Veto → RL-DQN.
     """
     _require_ready()
     retriever        = _state["retriever"]
     profile_manager  = _state["profile_manager"]
     recommend_engine = _state["recommend_engine"]
 
-    profile = profile_manager.get_profile(user_id)
+    profile = await profile_manager.get_profile(user_id)
 
     if len(profile.clicks) < COLD_START_THRESHOLD:
-        # Cold start — surface random items from the high-precision pool
         pool = [a for a in retriever.cleora_asins if a in retriever.asin_to_idx]
         sample = random.sample(pool, min(10, len(pool)))
         rec_dict = {
@@ -522,9 +519,8 @@ async def recommend(user_id: str):
         }
         mode = "cold_start"
     else:
-        # Load per-user DQN weights if they exist
         recommend_engine.load_rl_weights(user_id, DATA_DIR)
-        res = recommend_engine.recommend_for_user(user_id, top_k=5)
+        res = await recommend_engine.recommend_for_user(user_id, top_k=5)
         if res is None:
             pool = [a for a in retriever.cleora_asins if a in retriever.asin_to_idx]
             sample = random.sample(pool, min(10, len(pool)))
@@ -537,12 +533,10 @@ async def recommend(user_id: str):
             rec_dict = res
             mode = "personalized"
 
-    # Log all shown recommendations once
     all_rec_ids = [asin for asin, _, _ in rec_dict["people_also_buy"]] + [asin for asin, _, _ in rec_dict["you_might_like"]]
-    profile_manager.log_recommendation(user_id, all_rec_ids)
+    await profile_manager.log_recommendation(user_id, all_rec_ids)
 
     metadata_df = _state["metadata_df"]
-    
     def enrich_list(recs):
         enriched = []
         for asin, score, layer in recs:
@@ -565,9 +559,7 @@ async def recommend(user_id: str):
 @app.post("/interact")
 async def interact(req: InteractRequest):
     """
-    Log a user interaction (click or skip), train the RL agent, and persist
-    both the profile and the updated DQN weights.
-    Also pushes to Redis queue for permanent logging in MongoDB.
+    Log user interaction, train RL agent, and persist state to MongoDB.
     """
     import json
     from datetime import datetime
@@ -577,27 +569,25 @@ async def interact(req: InteractRequest):
     profile_manager  = _state["profile_manager"]
     recommend_engine = _state["recommend_engine"]
 
-    # ── Capture s_t BEFORE the profile update ────────────────────────────────
-    pre_profile = profile_manager.get_profile(req.user_id)
+    pre_profile = await profile_manager.get_profile(req.user_id)
 
-    # ── Determine reward and update profile (s_t → s_t+1) ───────────────────
     if req.action == "cart":
         reward = 5.0
-        profile_manager.log_click(req.user_id, req.item_id, source="web_ui", action="cart")
+        await profile_manager.log_click(req.user_id, req.item_id, source="web_ui", action="cart")
     elif req.action == "click":
         reward = 1.0
-        profile_manager.log_click(req.user_id, req.item_id, source="web_ui", action="click")
+        await profile_manager.log_click(req.user_id, req.item_id, source="web_ui", action="click")
     else:
         reward = 0.0
-        profile = profile_manager.get_profile(req.user_id)
+        profile = await profile_manager.get_profile(req.user_id)
         profile.purchases.append({
             "timestamp": datetime.now().isoformat(),
             "item_id": req.item_id,
             "action": "skip",
         })
-        profile_manager.save_profile(req.user_id)
+        await profile_manager.save_profile(req.user_id)
 
-    # ── Push to Redis for Async MongoDB Logging ──
+    # Push to Redis for Background interactions logging
     try:
         if db.redis:
             log_entry = {
@@ -613,10 +603,9 @@ async def interact(req: InteractRequest):
     except Exception as e:
         log.error(f"Redis queue push failed: {e}")
 
-    # ── Train the RL agent with (s_t, action, reward, s_t+1) ─────────────────
     loss = None
     if pre_profile.text_profile is not None:
-        post_profile = profile_manager.get_profile(req.user_id)
+        post_profile = await profile_manager.get_profile(req.user_id)
         loss = recommend_engine.train_rl(
             pre_profile, req.item_id, reward,
             next_profile=post_profile,
@@ -628,10 +617,10 @@ async def interact(req: InteractRequest):
 
 @app.get("/profile")
 async def get_profile(user_id: str):
-    """Return aggregated user stats for the frontend dashboard."""
+    """Return user stats from MongoDB-backed profile manager."""
     _require_ready()
     profile_manager = _state["profile_manager"]
-    profile = profile_manager.get_profile(user_id)
+    profile = await profile_manager.get_profile(user_id)
     total  = len(profile.clicks)
     return {
         "user_id":           user_id,

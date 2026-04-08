@@ -1,4 +1,5 @@
 import numpy as np
+import faiss
 from config import *
 from rl_collaborative_filter import RLCollaborativeFilter
 import os
@@ -37,9 +38,9 @@ class PassiveRecommendationEngine:
             self.rl_cf.load(path)
 
     # ─── Main recommendation entry point ──────────────────────────────────────
-    def recommend_for_user(self, user_id, top_k=TOP_K):
+    async def recommend_for_user(self, user_id, top_k=TOP_K):
         """Generate personalized recommendations separated into two distinct pools."""
-        profile = self.profile_manager.get_profile(user_id)
+        profile = await self.profile_manager.get_profile(user_id)
 
         # Cold start — not enough data yet
         if len(profile.clicks) < COLD_START_THRESHOLD:
@@ -91,15 +92,30 @@ class PassiveRecommendationEngine:
 
     # ─── Layer 1: Behavioral candidate generation ─────────────────────────────
     def collaborative_filter(self, profile, top_n=50):
-        """Use the 5 most recent interactions as seeds for Cleora neighbor search."""
+        """
+        Dual-mode retrieval:
+        1. Query Cleora index using the user's aggregated cleora_profile vector.
+        2. Query using the 5 most recent interactions as seeds.
+        """
         all_candidates = set()
 
+        # 1. Vector-based search (The "Fast Lane" projection)
+        if profile.cleora_profile is not None and self.retriever.cleora_index is not None:
+            # Query the FAISS index with the user's average behavioral vector
+            query_vec = profile.cleora_profile.reshape(1, -1).astype("float32")
+            faiss.normalize_L2(query_vec)
+            D, I = self.retriever.cleora_index.search(query_vec, top_n)
+            for idx in I[0]:
+                if idx != -1:
+                    all_candidates.add(self.retriever.cleora_asins[idx])
+
+        # 2. Seed-based search (The "Legacy" path)
         seeds = list(profile.recent_interactions)[-5:]
         for item_id in seeds:
             neighbors = self.retriever.get_behavioral_candidates(item_id, top_n=top_n)
             all_candidates.update(neighbors)
 
-        # Fallback: if seeds aren't in Cleora graph (e.g. filtered out during data prep), grab popular/random nodes
+        # Fallback: if seeds aren't in Cleora graph, grab popular nodes
         if not all_candidates:
             import random
             pool = [a for a in self.retriever.cleora_asins if a in self.retriever.asin_to_idx]

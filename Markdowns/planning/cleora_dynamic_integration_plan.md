@@ -101,20 +101,34 @@ Guest users present a "Cold Start" problem for behavioral graphs because they ha
 
 ---
 
-## 5. Implementation Roadmap
+## 5. Implementation Roadmap (Dual-Speed Architecture)
 
-### Phase A: Persistence Layer (Immediate)
-- Install `motor` (async MongoDB driver for Python).
-- Update `api.py` to push to a `log_interaction` background task.
-- Implementation of the MongoDB client in `src/utils.py`.
+To ensure the system is both responsive and capable of global learning, we implement a **Dual-Speed Behavioral Pipeline**.
 
-### Phase B: Dynamic Data Prep (Medium Term)
-- Modify `src/prepare_cleora_data.py` to query MongoDB instead of downloading static Amazon CSVs.
-- Combine the static "base" graph (3M rows) with the live "delta" graph (new interactions).
+### Phase A: Persistence Layer (✅ COMPLETED)
+- **Infrastructure**: MongoDB + Redis Docker stack.
+- **API Worker**: Async `_log_worker` in `api.py` draining the interaction queue.
+- **Audit Trail**: Every click/cart/skip now stored in `nba_logs.interactions`.
 
-### Phase C: Hot-Swapping (Production)
-- Add a `.reload()` method to the `Retriever` class.
-- Use a File System Watcher to detect when `cleora_embeddings.npz` is updated and swap the in-memory mapping without restarting the API.
+### Phase B: Dual-Speed Integration (Current Focus)
+
+#### 1. The "Fast Path": Real-Time Behavioral Projection
+Instead of re-training the graph for every click, we move the user *through* the existing Cleora space.
+- **Mechanism**: Update `UserProfileManager` to calculate a **1024-dim Cleora Profile**.
+- **Math**: When a user clicks `Book_A` and `Book_B`, their behavioral fingerprint becomes `mean(Cleora_Vec_A, Cleora_Vec_B)`.
+- **Latency**: 0ms (Vector averaging).
+- **Outcome**: The "People Also Buy" tab updates immediately after a user clicks a book, reflecting their new position in the behavioral map.
+
+#### 2. The "Slow Path": Delta-Augmented Batch Refitting
+Global relationships (e.g., new books becoming "friends") are updated periodically.
+- **Data Export**: A script `scripts/export_delta_hyperedges.py` queries MongoDB and formats new interactions into hyperedges.
+- **Graph Augmentation**: We append these "Delta" hyperedges to the 1.7M "Base" hyperedges.
+- **Up-weighting**: Multiply the "Delta" lines (e.g., repeat 100x) to ensure recent local behavior influences the global Markov propagation.
+- **Refit**: Run `src/run_cleora.py` once a week or after 10,000 new interactions.
+
+### Phase C: Production Hot-Swapping
+- **Hot-Reload**: Implement a File Watcher in `retriever.py` that detects a new `cleora_embeddings.npz` and swaps the FAISS index without an API restart.
+- **Session Merging**: Script to migrate `guest_uuid` interactions to registered `user_id` accounts in MongoDB.
 
 ---
 

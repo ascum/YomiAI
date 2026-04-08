@@ -48,17 +48,34 @@ class Database:
 
     @classmethod
     async def log_interaction(cls, interaction_data: dict):
-        """
-        Push interaction to MongoDB. 
-        Usually called from a background task to avoid blocking the user.
-        """
-        if cls.db is None:
-            return
-        
+        """Push interaction to the immutable 'interactions' collection."""
+        if cls.db is None: return
         try:
-            collection = cls.db["interactions"]
-            await collection.insert_one(interaction_data)
+            await cls.db["interactions"].insert_one(interaction_data)
         except Exception as e:
-            log.error(f"Failed to write to MongoDB: {e}")
+            log.error(f"Failed to write interaction to MongoDB: {e}")
+
+    @classmethod
+    async def fetch_profile(cls, user_id: str) -> dict:
+        """Retrieve the latest aggregated profile from the 'profiles' collection."""
+        if cls.db is None: return None
+        try:
+            return await cls.db["profiles"].find_one({"user_id": user_id})
+        except Exception as e:
+            log.error(f"Failed to fetch profile from MongoDB: {e}")
+            return None
+
+    @classmethod
+    async def upsert_profile(cls, user_id: str, profile_data: dict):
+        """Atomically update or create a user profile summary."""
+        if cls.db is None: return
+        try:
+            await cls.db["profiles"].update_one(
+                {"user_id": user_id},
+                {"$set": profile_data},
+                upsert=True
+            )
+        except Exception as e:
+            log.error(f"Failed to upsert profile to MongoDB: {e}")
 
 db = Database()
