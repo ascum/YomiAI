@@ -5,8 +5,8 @@ import random
 from urllib.parse import urlparse
 
 def download_sample_covers(num_samples=10):
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    parquet_path = os.path.join(base_dir, "src", "data", "item_metadata.parquet")
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    parquet_path = os.path.join(base_dir, "data", "item_metadata.parquet")
     output_dir = os.path.join(base_dir, "sample_covers")
     
     os.makedirs(output_dir, exist_ok=True)

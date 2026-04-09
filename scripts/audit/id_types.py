@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import os
 
-DATA_DIR = "src/data"
+DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data")
 
 def audit():
     print("=== ASIN Data Type Audit ===\n")

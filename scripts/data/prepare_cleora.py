@@ -3,7 +3,7 @@ from huggingface_hub import hf_hub_download
 import os
 
 def prepare_cleora_data(user_limit=500000, k_core=5):
-    base_dir = os.path.dirname(os.path.abspath(__file__))
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     data_dir = os.path.join(base_dir, "data")
     
     # 1. Load valid ASINs from our content index

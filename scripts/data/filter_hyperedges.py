@@ -3,7 +3,7 @@ import pandas as pd
 from tqdm import tqdm
 
 def filter_hyperedges():
-    base_dir = os.path.dirname(os.path.abspath(__file__))
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     data_dir = os.path.join(base_dir, "data")
     
     # 1. Load the 3,080,829 valid ASINs

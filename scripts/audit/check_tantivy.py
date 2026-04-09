@@ -1,7 +1,8 @@
 import tantivy
 import os
 
-INDEX_PATH = "src/data/tantivy_index"
+_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+INDEX_PATH = os.path.join(_ROOT, "data", "tantivy_index")
 
 def check():
     if not os.path.exists(INDEX_PATH):

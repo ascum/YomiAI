@@ -21,7 +21,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
 
@@ -114,7 +114,7 @@ def main():
 
     # Load resources
     from retriever import Retriever
-    DATA_DIR   = ROOT / "src" / "data"
+    DATA_DIR   = ROOT / "data"
     cleora_data  = np.load(str(DATA_DIR / "cleora_embeddings.npz"))
     retriever    = Retriever(str(DATA_DIR), cleora_data)
 

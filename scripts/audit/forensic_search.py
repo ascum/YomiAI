@@ -3,8 +3,9 @@ import pandas as pd
 import os
 import numpy as np
 
-INDEX_PATH = "src/data/tantivy_index"
-META_PATH  = "src/data/item_metadata.parquet"
+_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+INDEX_PATH = os.path.join(_ROOT, "data", "tantivy_index")
+META_PATH  = os.path.join(_ROOT, "data", "item_metadata.parquet")
 
 def investigate(query_str):
     print(f"=== Deep Investigation: '{query_str}' ===\n")

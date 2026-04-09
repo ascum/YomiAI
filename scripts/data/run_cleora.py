@@ -2,8 +2,10 @@ from pycleora import SparseMatrix
 import numpy as np
 import os
 
+_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data")
+
 def run_cleora():
-    hyperedge_path = 'src/data/hyperedges_cleora.txt'
+    hyperedge_path = os.path.join(_DATA_DIR, 'hyperedges_cleora.txt')
     if not os.path.exists(hyperedge_path):
         print(f"Error: {hyperedge_path} not found.")
         return
@@ -31,7 +33,7 @@ def run_cleora():
         embeddings /= np.linalg.norm(embeddings, ord=2, axis=-1, keepdims=True)
 
     # Save embeddings
-    output_path = 'src/data/cleora_embeddings.npz'
+    output_path = os.path.join(_DATA_DIR, 'cleora_embeddings.npz')
     np.savez(output_path, asins=mat.entity_ids, embeddings=embeddings)
     print(f"Saved Cleora embeddings for {len(mat.entity_ids)} items to {output_path}")
 

@@ -3,7 +3,7 @@ import numpy as np
 import os
 import time
 
-DATA_DIR = "src/data"
+DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data")
 
 def rebuild_index(name, dim):
     flat_path = os.path.join(DATA_DIR, f"{name}_index.faiss")

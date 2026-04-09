@@ -53,7 +53,8 @@ async def forensic_audit(user_id="user_demo_01"):
     # 3. Check for leftover JSON (Migration Check)
     print("\n--- 3. Local Migration Status ---")
     import os
-    json_path = f"src/data/profiles/{user_id}.json"
+    _root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    json_path = os.path.join(_root, "data", "profiles", f"{user_id}.json")
     if os.path.exists(json_path):
         print(f"⚠️  Note: Local JSON file still exists at '{json_path}'.")
         print("   (The system is now using MongoDB, but I haven't auto-deleted the JSON for safety).")

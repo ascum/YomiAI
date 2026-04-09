@@ -5,7 +5,7 @@ import pandas as pd
 import time
 from tqdm import tqdm
 
-DATA_DIR = "src/data"
+DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data")
 INDEX_PATH = os.path.join(DATA_DIR, "tantivy_index")
 
 def build_index():

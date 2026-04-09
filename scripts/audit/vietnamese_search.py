@@ -27,7 +27,7 @@ if sys.stdout.encoding != 'utf-8':
 from datetime import datetime
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
 
@@ -41,7 +41,7 @@ def load_resources():
     """Load BLaIR model, FAISS index and metadata parquet."""
     from retriever import Retriever
 
-    DATA_DIR = ROOT / "src" / "data"
+    DATA_DIR = ROOT / "data"
     cleora_path = DATA_DIR / "cleora_embeddings.npz"
 
     print("[audit] Loading FAISS indices…")
