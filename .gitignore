@@ -41,9 +41,9 @@ frontend/.eslintcache
 frontend/.vite-inspect
 
 # --- Data & Models (IMPORTANT: Storage heavy) ---
-# Ignore everything in src/data/ except the .gitkeep file
-src/data/*
-!src/data/.gitkeep
+# Ignore everything in data/ except the .gitkeep file
+data/*
+!data/.gitkeep
 # Also ignore data files found anywhere in the repo
 sample_covers/
 *.faiss

@@ -18,7 +18,7 @@ _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 class Settings:
     # ── Paths ────────────────────────────────────────────────────────────────
     PROJECT_ROOT: str = _PROJECT_ROOT
-    DATA_DIR: str = os.path.join(_PROJECT_ROOT, "src", "data")
+    DATA_DIR: str = os.path.join(_PROJECT_ROOT, "data")
 
     # ── Multimodal Embeddings ─────────────────────────────────────────────────
     BLAIR_DIM: int = 1024
