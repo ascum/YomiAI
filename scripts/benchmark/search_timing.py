@@ -2,33 +2,12 @@ import requests
 import time
 import json
 import numpy as np
-
-API_URL = "http://127.0.0.1:8000/search"
-
-TEST_QUERIES = [
-    "detective mystery novels",
-    "tiểu thuyết trinh thám",  # Vietnamese
-    "fantasy with magic systems",
-    "lịch sử thế giới",        # Vietnamese
-    "self-help for productivity",
-    "cookbook for beginners",
-    "science fiction space opera",
-    "biography of famous scientists",
-    "horror stories for kids",
-    "romance novels set in Paris"
-]
-
-import requests
-import time
-import json
-import numpy as np
 import sys
 import os
 from datetime import datetime
 
 API_URL = "http://127.0.0.1:8000/search"
 
-# ... (TEST_QUERIES remains same) ...
 TEST_QUERIES = [
     "detective mystery novels",
     "tiểu thuyết trinh thám",
@@ -43,7 +22,7 @@ TEST_QUERIES = [
 ]
 
 def format_human_time(ms):
-    # ... (remains same) ...
+    """Convert milliseconds to a human-readable string."""
     seconds = int(ms // 1000)
     remainder_ms = int(ms % 1000)
     minutes = int(seconds // 60)
@@ -58,7 +37,7 @@ DESCRIPTIONS = {
     "translate_ms":           "NLLB Translation (VI -> EN)",
     "encode_blair_ms":        "BLaIR Text Encoding (GPU)",
     "encode_clip_ms":         "CLIP Image Encoding (GPU)",
-    "bm25_ms":                "BM25 Keyword Search",
+    "tantivy_ms":             "Tantivy Rust Keyword Search",
     "blair_search_ms":        "FAISS Text Search",
     "clip_search_ms":         "FAISS Image Search",
     "rrf_ms":                 "Reciprocal Rank Fusion",
@@ -143,6 +122,6 @@ def run_benchmark(stage_name, num_runs=3):
     print(f"\nResults saved to: {filename}")
 
 if __name__ == "__main__":
-    # To run: python scripts/benchmark_search_timing.py "stage_1_threading"
+    # Example usage: python scripts/benchmark/search_timing.py "stage_3_tantivy"
     stage = sys.argv[1] if len(sys.argv) > 1 else "unnamed_stage"
     run_benchmark(stage)

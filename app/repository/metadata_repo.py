@@ -62,8 +62,14 @@ class MetadataRepository:
             title_val = row.get("title")
             title = str(title_val) if title_val and str(title_val) != "nan" else f"Book {asin[:8]}"
 
-            genre_val = row.get("main_category")
-            genre = str(genre_val) if genre_val and str(genre_val) != "nan" else "Books"
+            # EXTRACT RICH GENRE: Use the last part of the categories path
+            raw_cats = row.get("categories")
+            if raw_cats and str(raw_cats) != "nan":
+                # "Books|Literature & Fiction|History" -> "History"
+                genre = str(raw_cats).split("|")[-1].strip()
+            else:
+                genre_val = row.get("main_category")
+                genre = str(genre_val) if genre_val and str(genre_val) != "nan" else "Books"
 
             img_val = row.get("image_url")
             image_url = str(img_val) if img_val and str(img_val) != "nan" else None

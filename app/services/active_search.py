@@ -42,8 +42,7 @@ class ActiveSearchEngine:
         self.metadata_df     = metadata_df
         self._data_dir       = data_dir or settings.DATA_DIR
 
-        self.tantivy_index    = None
-        self.tantivy_searcher = None
+        self.tantivy_index = None
         self._load_tantivy_index()
 
     # ── Tantivy index loading ──────────────────────────────────────────────────
@@ -55,8 +54,7 @@ class ActiveSearchEngine:
             if not os.path.exists(index_path):
                 log.warning(f"Tantivy: Index not found at {index_path}. Keyword channel disabled.")
                 return
-            self.tantivy_index    = tantivy.Index.open(index_path)
-            self.tantivy_searcher = self.tantivy_index.searcher()
+            self.tantivy_index = tantivy.Index.open(index_path)
             log.info("Tantivy Rust keyword index loaded ✓")
         except Exception as e:
             log.error(f"Tantivy: failed to load: {e}")
@@ -64,7 +62,9 @@ class ActiveSearchEngine:
     # ── BM25 search ────────────────────────────────────────────────────────────
 
     def _bm25_search(self, query: str) -> tuple:
-        if self.tantivy_searcher is None or not query:
+        if self.tantivy_index is None or not query:
+            if self.tantivy_index is None:
+                log.warning("[Tantivy] index is None — keyword channel disabled")
             return [], 0.0
 
         clean_q = re.sub(r"[^\w\s]", " ", query).strip()
@@ -72,23 +72,28 @@ class ActiveSearchEngine:
         or_query_str = " OR ".join(tokens)
 
         try:
-            query_parser   = self.tantivy_index.parse_query(or_query_str, ["title", "author"])
-            search_results = self.tantivy_searcher.search(query_parser, limit=BM25_TOP_N)
+            searcher = self.tantivy_index.searcher()
+            # Search over title, author, and the new genres field (rich categories)
+            query_parser   = self.tantivy_index.parse_query(or_query_str, ["title", "author", "genres"])
+            search_results = searcher.search(query_parser, limit=BM25_TOP_N)
 
+            raw_hit_count = len(search_results.hits)
             if not search_results.hits:
+                log.info(f"[Tantivy] 0 raw hits for query: {or_query_str!r}")
                 return [], 0.0
 
             hits      = []
             top_score = float(search_results.hits[0][0])
 
             for score, doc_address in search_results.hits:
-                doc      = self.tantivy_searcher.doc(doc_address)
+                doc      = searcher.doc(doc_address)
                 asin_str = str(doc["asin"][0])
                 if self.metadata_df is not None and asin_str not in self.metadata_df.index:
                     continue
                 hits.append((asin_str, float(score)))
 
             if not hits:
+                log.info(f"[Tantivy] {raw_hit_count} raw hits but 0 passed meta filter")
                 return [], 0.0
 
             EXPECTED_PER_WORD = 10.0
@@ -141,7 +146,7 @@ class ActiveSearchEngine:
 
         t0 = time.perf_counter()
         bm25_hits, kw_conf = self._bm25_search(text_query) if text_query else ([], 0.0)
-        timings["bm25_ms"] = round((time.perf_counter() - t0) * 1000, 2)
+        timings["tantivy_ms"] = round((time.perf_counter() - t0) * 1000, 2)
 
         t1 = time.perf_counter()
         blair_results = []
@@ -153,6 +158,7 @@ class ActiveSearchEngine:
                 (self.retriever.asins[i], float(D[0][idx]))
                 for idx, i in enumerate(I[0]) if i != -1
             ]
+            log.info(f"[HNSW] returned {len(blair_results)} hits | scores: min={min(s for _,s in blair_results):.4f} max={max(s for _,s in blair_results):.4f}" if blair_results else "[HNSW] returned 0 hits")
         timings["blair_search_ms"] = round((time.perf_counter() - t1) * 1000, 2)
 
         t2 = time.perf_counter()
@@ -171,12 +177,12 @@ class ActiveSearchEngine:
         semantic_weight = 1.0 - kw_weight * 0.8
         visual_weight   = (1.0 + BM25_VISUAL_BOOST) if has_image else 0.0
 
-        log.info(f"Search weights — BM25:{kw_weight:.2f}  BLaIR:{semantic_weight:.2f}  "
+        log.info(f"Search weights — Tantivy:{kw_weight:.2f}  BLaIR:{semantic_weight:.2f}  "
                  f"CLIP:{visual_weight:.2f}  (conf={kw_conf:.2f}, img={'yes' if has_image else 'no'})")
 
         t3 = time.perf_counter()
         channels = [
-            ("bm25",  bm25_hits,     kw_weight),
+            ("tantivy",  bm25_hits,     kw_weight),
             ("blair", blair_results, semantic_weight),
             ("clip",  clip_results,  visual_weight),
         ]
@@ -188,7 +194,7 @@ class ActiveSearchEngine:
             return []
 
         if not blair_results and not clip_results and bm25_hits:
-            log.info("Search: encoder unavailable, using BM25-only result.")
+            log.info("Search: encoders unavailable, using Tantivy-only result.")
             final_ranking = [
                 (asin, {"score": 1.0 / (i + 1), "text_sim": 0.0,
                          "img_sim": 0.0, "bm25_score": score})
@@ -200,10 +206,12 @@ class ActiveSearchEngine:
 
         t4 = time.perf_counter()
         if self.metadata_df is not None:
+            before = len(final_ranking)
             final_ranking = [
                 (asin, data) for asin, data in final_ranking
                 if asin in self.metadata_df.index
             ]
+            log.info(f"[meta_filter] {before} → {len(final_ranking)} (dropped {before - len(final_ranking)})")
         timings["meta_filter_ms"] = round((time.perf_counter() - t4) * 1000, 2)
 
         t5 = time.perf_counter()
