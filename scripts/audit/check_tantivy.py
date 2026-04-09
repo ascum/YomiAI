@@ -19,7 +19,7 @@ def check():
     query_str = "jojo adventure"
     print(f"\nTesting search for: '{query_str}'")
     parser = index.parse_query(query_str, ["title"])
-    results = searcher.search(parser, 5)
+    results = searcher.search(parser, 10)
     
     print(f"Found {len(results.hits)} hits:")
     for score, addr in results.hits:
