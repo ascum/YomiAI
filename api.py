@@ -617,17 +617,41 @@ async def interact(req: InteractRequest):
 
 @app.get("/profile")
 async def get_profile(user_id: str):
-    """Return user stats from MongoDB-backed profile manager."""
+    """Return aggregated user stats and hydrated recent history for the UI bar."""
     _require_ready()
     profile_manager = _state["profile_manager"]
     profile = await profile_manager.get_profile(user_id)
-    total  = len(profile.clicks)
+    
+    # 1. Basic Stats
+    total_clicks = len(profile.clicks)
+    total_searches = len(profile.searches)
+    
+    # 2. Hydrate top 10 recent items for the "Recently Viewed" Bar
+    # Unify clicks and skips, sort by time
+    history = []
+    for c in profile.clicks:
+        history.append({"item_id": c["item_id"], "action": c.get("action", "click"), "ts": c.get("timestamp")})
+    for p in profile.purchases:
+        history.append({"item_id": p["item_id"], "action": "skip", "ts": p.get("timestamp")})
+    
+    history.sort(key=lambda x: x["ts"] or "", reverse=True)
+    recent_10 = history[:10]
+    
+    hydrated_history = []
+    for entry in recent_10:
+        details = _get_item_details(entry["item_id"])
+        hydrated_history.append({
+            **details,
+            "action": entry["action"],
+            "timestamp": entry["ts"]
+        })
+
     return {
         "user_id":           user_id,
-        "interaction_count": total,
-        "click_count":       total,
-        "ctr":               total / max(1, total + len(profile.searches)),
-        "rl_steps":          total,
+        "interaction_count": total_clicks,
+        "searches_count":    total_searches,
+        "ctr":               total_clicks / max(1, total_clicks + total_searches),
+        "recent_items":      hydrated_history,
         "has_profile":       profile.text_profile is not None,
     }
 

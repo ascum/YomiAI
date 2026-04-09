@@ -473,6 +473,27 @@ export default function App() {
     setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 3000);
   }, []);
 
+  const [profileStats, setProfileStats] = useState({ interaction_count: 0, searches_count: 0, ctr: 0, recent_items: [] });
+
+  const loadProfile = async () => {
+    if (useMock) return;
+    try {
+      const data = await apiProfile(userId);
+      if (data) {
+        setProfileStats(data);
+        // Sync interactions list with backend's recent_items
+        setInteractions(data.recent_items || []);
+      }
+    } catch (e) {
+      console.warn("Could not load profile stats from server.");
+    }
+  };
+
+  useEffect(() => {
+    loadRecommendations();
+    loadProfile();
+  }, [userId, useMock]);
+
   const handleSearch = async () => {
     if (!query.trim() && !imageFile) return;
     setIsSearching(true);
@@ -600,9 +621,10 @@ export default function App() {
     : "—";
 
   return (
-    <div className={`min-h-screen text-white ${!isDark ? "theme-light" : ""}`} style={{
+    <div className={`h-screen flex flex-col text-white ${!isDark ? "theme-light" : ""}`} style={{
       background: "#080b14",
       fontFamily: "'DM Sans', system-ui, sans-serif",
+      overflow: "hidden"
     }}>
       {/* Google Fonts */}
       <style>{`
@@ -662,117 +684,140 @@ export default function App() {
       </div>
 
       {/* ── HEADER ── */}
-      <header className="relative z-10 flex items-center justify-between px-6 py-3.5" style={{
+      <header className="relative z-10 flex flex-col" style={{
         borderBottom: "1px solid rgba(255,255,255,0.06)",
         background: "rgba(8,11,20,0.8)",
         backdropFilter: "blur(12px)",
       }}>
-        {/* Brand */}
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{
-            background: "linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%)",
-            boxShadow: "0 0 20px rgba(124,58,237,0.4), inset 0 1px 0 rgba(255,255,255,0.15)",
-          }}>
-            <span style={{ fontSize: 16 }}></span>
+        <div className="flex items-center justify-between px-6 py-3">
+          {/* Brand */}
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{
+              background: "linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%)",
+              boxShadow: "0 0 20px rgba(124,58,237,0.4), inset 0 1px 0 rgba(255,255,255,0.15)",
+            }}>
+              <span style={{ fontSize: 16 }}></span>
+            </div>
+            <div>
+              <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 17, fontWeight: 700, lineHeight: 1.1, letterSpacing: "0.01em" }}>
+                NBA<span style={{ color: "#a78bfa" }}>sys</span>
+              </h1>
+              <p style={{ fontSize: 9, color: "rgba(255,255,255,0.28)", marginTop: 1, fontFamily: "'DM Mono', monospace", letterSpacing: "0.05em" }}>
+                DATN · MULTIMODAL REC ENGINE
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 17, fontWeight: 700, lineHeight: 1.1, letterSpacing: "0.01em" }}>
-              NBA<span style={{ color: "#a78bfa" }}>sys</span>
-            </h1>
-            <p style={{ fontSize: 9, color: "rgba(255,255,255,0.28)", marginTop: 1, fontFamily: "'DM Mono', monospace", letterSpacing: "0.05em" }}>
-              DATN · MULTIMODAL REC ENGINE
-            </p>
+
+          {/* Controls & Stats */}
+          <div className="flex items-center gap-6">
+            {/* User Mode Toggle */}
+            <div className="flex items-center gap-2.5">
+              <button
+                onClick={toggleUserMode}
+                className="px-3 py-1.5 rounded-lg transition-all duration-200 flex items-center gap-2"
+                style={{
+                  background: isGuest ? "rgba(167,139,250,0.1)" : "rgba(52,211,153,0.1)",
+                  border: `1px solid ${isGuest ? "rgba(167,139,250,0.3)" : "rgba(52,211,153,0.3)"}`,
+                  color: isGuest ? "#a78bfa" : "#6ee7b7",
+                  fontSize: 12,
+                  fontWeight: 600
+                }}
+              >
+                <span style={{ fontSize: 14 }}>{isGuest ? "👤" : "👨‍💻"}</span>
+                {isGuest ? "Guest Mode" : "Demo User"}
+              </button>
+            </div>
+
+            <div style={{ width: 1, height: 28, background: "rgba(255,255,255,0.08)" }} />
+
+            {/* Cart, Theme & Mock/Live toggle */}
+            <div className="flex items-center gap-2.5">
+              <button
+                onClick={() => setIsDark(!isDark)}
+                className="px-3 py-1.5 rounded-lg transition-all duration-200"
+                style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", fontSize: 13 }}
+              >
+                {isDark ? "Light" : "Dark"}
+              </button>
+              <button
+                className="px-3 py-1.5 rounded-lg transition-all duration-200 flex items-center gap-2"
+                style={{ background: "rgba(16,185,129,0.15)", border: "1px solid rgba(16,185,129,0.3)", color: "#10b981", fontSize: 13, fontWeight: 600 }}
+              >
+                Cart <span style={{ background: "#10b981", color: "#000", padding: "0 6px", borderRadius: 10, fontSize: 10 }}>{cart.length}</span>
+              </button>
+            </div>
+            
+            <div style={{ width: 1, height: 28, background: "rgba(255,255,255,0.08)" }} />
+
+            {/* Mock/Live */}
+            <div className="flex items-center gap-2.5">
+              <span style={{ fontSize: 10, color: useMock ? "rgba(167,139,250,0.9)" : "rgba(255,255,255,0.25)", fontFamily: "'DM Mono', monospace", fontWeight: 400, letterSpacing: "0.04em" }}>MOCK</span>
+              <button
+                onClick={() => { setUseMock(m => !m); addToast(useMock ? "Switched to Live API mode" : "Switched to Mock mode", "info"); }}
+                className="relative rounded-full transition-all duration-300 flex-shrink-0"
+                style={{
+                  width: 36, height: 18,
+                  background: useMock ? "rgba(124,58,237,0.5)" : "rgba(52,211,153,0.5)",
+                  border: `1px solid ${useMock ? "rgba(167,139,250,0.4)" : "rgba(52,211,153,0.4)"}`,
+                  boxShadow: useMock ? "0 0 12px rgba(124,58,237,0.3)" : "0 0 12px rgba(52,211,153,0.3)",
+                  cursor: "pointer",
+                }}
+              >
+                <div
+                  className="absolute rounded-full bg-white transition-all duration-300"
+                  style={{
+                    width: 12, height: 12, top: 2,
+                    left: useMock ? 2 : 20,
+                    boxShadow: "0 1px 4px rgba(0,0,0,0.5)",
+                  }}
+                />
+              </button>
+              <span style={{ fontSize: 10, color: !useMock ? "rgba(52,211,153,0.9)" : "rgba(255,255,255,0.25)", fontFamily: "'DM Mono', monospace", letterSpacing: "0.04em" }}>LIVE</span>
+            </div>
+
+            {/* Separator */}
+            <div style={{ width: 1, height: 28, background: "rgba(255,255,255,0.08)" }} />
+
+            {/* Stats */}
+            <div className="flex gap-5">
+              {[
+                { label: "RL Steps", value: rlStep, color: "#a78bfa" },
+                { label: "CTR", value: `${ctr}%`, color: "#6ee7b7" },
+                { label: "Interactions", value: interactions.length, color: "#60a5fa" },
+              ].map(s => (
+                <div key={s.label} className="text-center">
+                  <div className="font-mono font-semibold" style={{ fontSize: 15, color: s.value === 0 || s.value === "—%" ? "rgba(255,255,255,0.3)" : s.color }}>{s.value}</div>
+                  <div style={{ fontSize: 9, color: "rgba(255,255,255,0.2)", fontFamily: "'DM Mono', monospace", letterSpacing: "0.04em" }}>{s.label.toUpperCase()}</div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
-        {/* Controls & Stats */}
-        <div className="flex items-center gap-6">
-          {/* User Mode Toggle */}
-          <div className="flex items-center gap-2.5">
-            <button
-              onClick={toggleUserMode}
-              className="px-3 py-1.5 rounded-lg transition-all duration-200 flex items-center gap-2"
-              style={{
-                background: isGuest ? "rgba(167,139,250,0.1)" : "rgba(52,211,153,0.1)",
-                border: `1px solid ${isGuest ? "rgba(167,139,250,0.3)" : "rgba(52,211,153,0.3)"}`,
-                color: isGuest ? "#a78bfa" : "#6ee7b7",
-                fontSize: 12,
-                fontWeight: 600
-              }}
-            >
-              <span style={{ fontSize: 14 }}>{isGuest ? "👤" : "👨‍💻"}</span>
-              {isGuest ? "Guest Mode" : "Demo User"}
-            </button>
-          </div>
-
-          <div style={{ width: 1, height: 28, background: "rgba(255,255,255,0.08)" }} />
-
-          {/* Cart, Theme & Mock/Live toggle */}
-          <div className="flex items-center gap-2.5">
-            <button
-              onClick={() => setIsDark(!isDark)}
-              className="px-3 py-1.5 rounded-lg transition-all duration-200"
-              style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", fontSize: 13 }}
-            >
-              {isDark ? "Light" : "Dark"}
-            </button>
-            <button
-              className="px-3 py-1.5 rounded-lg transition-all duration-200 flex items-center gap-2"
-              style={{ background: "rgba(16,185,129,0.15)", border: "1px solid rgba(16,185,129,0.3)", color: "#10b981", fontSize: 13, fontWeight: 600 }}
-            >
-              Cart <span style={{ background: "#10b981", color: "#000", padding: "0 6px", borderRadius: 10, fontSize: 10 }}>{cart.length}</span>
-            </button>
-          </div>
-          
-          <div style={{ width: 1, height: 28, background: "rgba(255,255,255,0.08)" }} />
-
-          {/* Mock/Live */}
-          <div className="flex items-center gap-2.5">
-            <span style={{ fontSize: 10, color: useMock ? "rgba(167,139,250,0.9)" : "rgba(255,255,255,0.25)", fontFamily: "'DM Mono', monospace", fontWeight: 400, letterSpacing: "0.04em" }}>MOCK</span>
-            <button
-              onClick={() => { setUseMock(m => !m); addToast(useMock ? "Switched to Live API mode" : "Switched to Mock mode", "info"); }}
-              className="relative rounded-full transition-all duration-300 flex-shrink-0"
-              style={{
-                width: 36, height: 18,
-                background: useMock ? "rgba(124,58,237,0.5)" : "rgba(52,211,153,0.5)",
-                border: `1px solid ${useMock ? "rgba(167,139,250,0.4)" : "rgba(52,211,153,0.4)"}`,
-                boxShadow: useMock ? "0 0 12px rgba(124,58,237,0.3)" : "0 0 12px rgba(52,211,153,0.3)",
-                cursor: "pointer",
-              }}
-            >
-              <div
-                className="absolute rounded-full bg-white transition-all duration-300"
-                style={{
-                  width: 12, height: 12, top: 2,
-                  left: useMock ? 2 : 20,
-                  boxShadow: "0 1px 4px rgba(0,0,0,0.5)",
-                }}
-              />
-            </button>
-            <span style={{ fontSize: 10, color: !useMock ? "rgba(52,211,153,0.9)" : "rgba(255,255,255,0.25)", fontFamily: "'DM Mono', monospace", letterSpacing: "0.04em" }}>LIVE</span>
-          </div>
-
-          {/* Separator */}
-          <div style={{ width: 1, height: 28, background: "rgba(255,255,255,0.08)" }} />
-
-          {/* Stats */}
-          <div className="flex gap-5">
-            {[
-              { label: "RL Steps", value: rlStep, color: "#a78bfa" },
-              { label: "CTR", value: `${ctr}%`, color: "#6ee7b7" },
-              { label: "Interactions", value: interactions.length, color: "#60a5fa" },
-            ].map(s => (
-              <div key={s.label} className="text-center">
-                <div className="font-mono font-semibold" style={{ fontSize: 15, color: s.value === 0 || s.value === "—%" ? "rgba(255,255,255,0.3)" : s.color }}>{s.value}</div>
-                <div style={{ fontSize: 9, color: "rgba(255,255,255,0.2)", fontFamily: "'DM Mono', monospace", letterSpacing: "0.04em" }}>{s.label.toUpperCase()}</div>
+        {/* Recently Viewed Bar */}
+        {!useMock && profileStats.recent_items?.length > 0 && (
+          <div className="flex items-center gap-4 px-6 py-2 bg-white/5 border-t border-white/5 overflow-x-auto no-scrollbar">
+            <span className="text-[10px] text-white/30 font-bold uppercase tracking-wider whitespace-nowrap">Recently Viewed</span>
+            {profileStats.recent_items.map((item, idx) => (
+              <div key={idx} className="flex items-center gap-2 group cursor-pointer" title={item.title}>
+                <div className="w-8 h-10 rounded-sm overflow-hidden relative border border-white/10 group-hover:border-indigo-500/50 transition-colors">
+                  <img src={item.image_url} alt="" className="w-full h-full object-cover" />
+                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <span className="text-[8px] font-bold">{item.action === 'cart' ? '🛒' : '👁️'}</span>
+                  </div>
+                </div>
+                <div className="max-w-[80px]">
+                  <p className="text-[10px] text-white/60 truncate font-medium">{item.title}</p>
+                  <p className="text-[8px] text-white/20 truncate">{item.author}</p>
+                </div>
               </div>
             ))}
           </div>
-        </div>
+        )}
       </header>
 
       {/* ── MAIN LAYOUT ── */}
-      <div className="relative z-10 flex" style={{ height: "calc(100vh - 61px)" }}>
+      <div className="relative z-10 flex flex-1 min-h-0">
 
         {/* ── LEFT PANEL (42%) — Search / Recs tabs ── */}
         <div className="flex flex-col flex-shrink-0" style={{ width: "42%", borderRight: "1px solid rgba(255,255,255,0.06)" }}>
@@ -907,7 +952,7 @@ export default function App() {
               </div>
 
               {/* Results list */}
-              <div className="flex-1 overflow-y-auto space-y-2 pr-1" style={{ marginRight: -4 }}>
+              <div className="flex-1 overflow-y-auto space-y-2 pr-1 pb-2" style={{ marginRight: -4 }}>
                 {isSearching ? (
                   <div className="flex flex-col items-center justify-center h-40 gap-3">
                     <div className="flex gap-1.5">
