@@ -21,16 +21,16 @@ log = logging.getLogger("nba_api")
 # ── Loaders ───────────────────────────────────────────────────────────────────
 
 def load_blair(device: torch.device):
-    """Load BLaIR sentence-transformer. Returns model or None on failure."""
+    """Load BGE-M3 sentence-transformer (replaces BLaIR). Returns model or None on failure."""
     try:
         from sentence_transformers import SentenceTransformer
-        model = SentenceTransformer("hyp1231/blair-roberta-large", device=str(device))
+        model = SentenceTransformer("BAAI/bge-m3", device=str(device), trust_remote_code=True)
         if device.type == "cuda":
             model.half()
-        log.info(f"BLaIR encoder ready ✓ (dtype={'fp16' if device.type == 'cuda' else 'fp32'})")
+        log.info(f"BGE-M3 encoder ready ✓ (dtype={'fp16' if device.type == 'cuda' else 'fp32'})")
         return model
     except Exception as e:
-        log.warning(f"BLaIR encoder failed to load — text search will use proxy mode: {e}")
+        log.warning(f"BGE-M3 encoder failed to load — text search will use proxy mode: {e}")
         return None
 
 
@@ -92,6 +92,6 @@ def proxy_query_vecs(retriever) -> tuple[np.ndarray, np.ndarray]:
     asin = random.choice(retriever.asins)
     idx  = retriever.asin_to_idx[asin]
     return (
-        retriever.blair_index.reconstruct(idx).astype("float32"),
+        retriever.blair_flat.reconstruct(idx).astype("float32"),
         retriever.clip_index.reconstruct(idx).astype("float32"),
     )

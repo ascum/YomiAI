@@ -91,9 +91,9 @@ async def lifespan(app):
         data_dir=settings.DATA_DIR,
     )
     container.search_engine = search_engine
-    bm25_status = ("ready ✓ (Tantivy Rust)" if search_engine.tantivy_index is not None
-                   else "disabled (index not found)")
-    log.info(f"Search engine ready ✓  |  Keyword index: {bm25_status}")
+    tantivy_status = ("ready ✓ (Tantivy Rust)" if search_engine.tantivy_index is not None
+                      else "disabled (index not found)")
+    log.info(f"Search engine ready ✓  |  Keyword index: {tantivy_status}")
 
     # 6. Qwen LLM — lazy-loaded on first /ask_llm call (keeps VRAM free for NLLB)
     log.info("Qwen LLM will lazy-load on first /ask_llm request.")
