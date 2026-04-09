@@ -24,16 +24,30 @@ class Retriever:
         self.asins = pd.read_csv(os.path.join(base_dir, "asins.csv"), header=None)[0].tolist()
         self.asin_to_idx = {asin: i for i, asin in enumerate(self.asins)}
 
-        blair_hnsw = os.path.join(base_dir, "blair_index_hnsw.faiss")
-        clip_hnsw  = os.path.join(base_dir, "clip_index_hnsw.faiss")
+        blair_hnsw_bge = os.path.join(base_dir, "blair_index_bge_hnsw.faiss")
+        blair_flat_bge = os.path.join(base_dir, "blair_index_bge_flat.faiss")
+        blair_hnsw     = os.path.join(base_dir, "blair_index_hnsw.faiss")
+        clip_hnsw      = os.path.join(base_dir, "clip_index_hnsw.faiss")
 
-        if os.path.exists(blair_hnsw):
+        # Priority: BGE HNSW (fast, non-zero only) → BGE flat (exact fallback) → legacy BLaIR
+        if os.path.exists(blair_hnsw_bge):
+            print(f"Loading BGE HNSW index: {blair_hnsw_bge}")
+            self.blair_index = faiss.read_index(blair_hnsw_bge, faiss.IO_FLAG_MMAP)
+            self.blair_flat  = faiss.read_index(blair_flat_bge, faiss.IO_FLAG_MMAP) \
+                               if os.path.exists(blair_flat_bge) else self.blair_index
+        elif os.path.exists(blair_flat_bge):
+            print(f"Loading BGE flat index (HNSW not found): {blair_flat_bge}")
+            self.blair_index = faiss.read_index(blair_flat_bge, faiss.IO_FLAG_MMAP)
+            self.blair_flat  = self.blair_index
+        elif os.path.exists(blair_hnsw):
             print(f"Loading HNSW BLaIR index: {blair_hnsw}")
             self.blair_index = faiss.read_index(blair_hnsw, faiss.IO_FLAG_MMAP)
+            self.blair_flat  = self.blair_index
         else:
             self.blair_index = faiss.read_index(
                 os.path.join(base_dir, "blair_index.faiss"), faiss.IO_FLAG_MMAP
             )
+            self.blair_flat  = self.blair_index
 
         if os.path.exists(clip_hnsw):
             print(f"Loading HNSW CLIP index: {clip_hnsw}")
@@ -75,13 +89,13 @@ class Retriever:
             return pd.DataFrame()
 
         q_idx = self.asin_to_idx[query_asin]
-        q_blair = self.blair_index.reconstruct(q_idx).reshape(1, -1)
+        q_blair = self.blair_flat.reconstruct(q_idx).reshape(1, -1)
         q_clip  = self.clip_index.reconstruct(q_idx).reshape(1, -1)
 
         scores = []
         for asin in valid_asins:
             c_idx  = self.asin_to_idx[asin]
-            c_blair = self.blair_index.reconstruct(c_idx).reshape(1, -1)
+            c_blair = self.blair_flat.reconstruct(c_idx).reshape(1, -1)
             c_clip  = self.clip_index.reconstruct(c_idx).reshape(1, -1)
             scores.append({
                 "asin":        asin,
@@ -96,7 +110,7 @@ class Retriever:
         if asin in self.asin_to_idx:
             idx = self.asin_to_idx[asin]
             return (
-                self.blair_index.reconstruct(idx),
+                self.blair_flat.reconstruct(idx),
                 self.clip_index.reconstruct(idx),
             )
         return None

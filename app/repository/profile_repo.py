@@ -131,7 +131,7 @@ class UserProfileManager:
         for item_id in all_items:
             if item_id in self.retriever.asin_to_idx:
                 idx = self.retriever.asin_to_idx[item_id]
-                blair_vecs.append(self.retriever.blair_index.reconstruct(idx))
+                blair_vecs.append(self.retriever.blair_flat.reconstruct(idx))
                 clip_vecs.append(self.retriever.clip_index.reconstruct(idx))
             if (self.retriever.cleora_index is not None
                     and item_id in self.retriever.asin_to_cleora_idx):

@@ -132,7 +132,7 @@ class PassiveRecommendationEngine:
 
         for asin in valid_candidates:
             idx        = self.retriever.asin_to_idx[asin]
-            item_blair = self.retriever.blair_index.reconstruct(idx)
+            item_blair = self.retriever.blair_flat.reconstruct(idx)
             item_clip  = self.retriever.clip_index.reconstruct(idx)
 
             text_sim   = float(user_text_profile   @ item_blair)
