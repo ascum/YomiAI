@@ -169,7 +169,7 @@ class ActiveSearchEngine:
 
     # ---- Main search entry point --------------------------------------------
 
-    def search(
+    async def search(
         self,
         user_id,
         text_query_vec=None,
@@ -290,7 +290,7 @@ class ActiveSearchEngine:
 
         # Log to user profile
         result_items = [asin for asin, _ in final_ranking]
-        self.profile_manager.log_search(
+        await self.profile_manager.log_search(
             user_id,
             "SIMULATED_TEXT"  if has_text  else None,
             "SIMULATED_IMAGE" if has_image else None,
