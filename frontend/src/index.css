@@ -7,12 +7,32 @@
 @layer base {
   html, body, #root { height: 100%; overflow: hidden; }
   * { box-sizing: border-box; }
-  button, input { outline: none; }
+
+  /* Remove focus ring on mouse click, keep it for keyboard navigation */
+  button:focus, input:focus { outline: none; }
+  button:focus-visible, input:focus-visible {
+    outline: 2px solid #dfc5a4;
+    outline-offset: 2px;
+  }
 
   ::-webkit-scrollbar        { width: 4px; }
   ::-webkit-scrollbar-track  { background: transparent; }
   ::-webkit-scrollbar-thumb  { background: #babbbd; border-radius: 2px; }
   .dark ::-webkit-scrollbar-thumb { background: #627d9a; }
+
+  /* Score badge colors — adapt to dark mode via CSS variables */
+  :root {
+    --score-high: #2e3257;
+    --score-mid:  #627d9a;
+    --score-low:  #babbbd;
+    --score-track: rgba(186,187,189,0.35);
+  }
+  .dark {
+    --score-high: #dfc5a4;
+    --score-mid:  #627d9a;
+    --score-low:  #627d9a;
+    --score-track: rgba(98,125,154,0.3);
+  }
 }
 
 /* Keyframes must live outside @layer blocks */

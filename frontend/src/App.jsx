@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { api } from "./services/api";
 import { BookCover } from "./components/ui/BookCover";
 import { ProfileRadar } from "./components/features/profile/ProfileRadar";
 import { SearchResultCard } from "./components/features/search/SearchResultCard";
 import { RecommendCard } from "./components/features/recs/RecommendCard";
+import { SkeletonCard } from "./components/ui/SkeletonCard";
 
 // ─── Mock data ────────────────────────────────────────────────────────────────
 const MOCK_BOOKS = [
@@ -46,11 +47,14 @@ export default function App() {
   const [imagePreview, setImagePreview] = useState(null);
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching]   = useState(false);
+  const [searchError, setSearchError]   = useState(null);
 
   // ── Recommendations ─────────────────────────────────────────────────────────
   const [recommendations, setRecommendations] = useState({ people_also_buy: [], you_might_like: [] });
-  const [recTab, setRecTab]         = useState("pab");
+  const [recTab, setRecTab]             = useState("pab");
   const [isLoadingRecs, setLoadingRecs] = useState(false);
+  const [recsError, setRecsError]       = useState(null);
+  const [lastRecsRefresh, setLastRecsRefresh] = useState(null);
 
   // ── RL / profile ────────────────────────────────────────────────────────────
   const [interactions, setInteractions] = useState([]);
@@ -83,28 +87,31 @@ export default function App() {
 
   const loadRecs = useCallback(async () => {
     setLoadingRecs(true);
+    setRecsError(null);
     try {
       if (useMock) {
         await new Promise(r => setTimeout(r, 600));
         setRecommendations(MOCK_RECS);
-        toast("Mock recommendations loaded", "success");
       } else {
         const d = await api.recommend(userId, sessionId);
         setRecommendations(d || { people_also_buy: [], you_might_like: [] });
-        toast("Personalized recommendations loaded", "success");
         try { const m = await api.rlMetrics(userId); setRlMetrics(m); } catch (_) {}
       }
-    } catch (_) { toast("Backend unreachable — enable mock mode", "error"); }
-    finally { setLoadingRecs(false); }
+      setLastRecsRefresh(new Date());
+    } catch (_) {
+      setRecsError("Could not load recommendations.");
+      toast("Backend unreachable — enable mock mode", "error");
+    } finally { setLoadingRecs(false); }
   }, [userId, useMock, sessionId, toast]);
 
+  // Single effect — fires on mount and whenever userId/useMock change
   useEffect(() => { loadRecs(); loadProfile(); }, [userId, useMock]);
-  useEffect(() => { loadRecs(); }, []);
 
   // ── Search handler ──────────────────────────────────────────────────────────
   const handleSearch = async () => {
     if (!query.trim() && !imageFile) return;
     setIsSearching(true);
+    setSearchError(null);
     try {
       if (useMock) {
         await new Promise(r => setTimeout(r, 800));
@@ -117,8 +124,10 @@ export default function App() {
         setSearchResults(d.results || []);
         toast(`Found ${d.results?.length ?? 0} results`, "success");
       }
-    } catch (_) { toast("Backend unreachable — enable mock mode", "error"); }
-    finally { setIsSearching(false); }
+    } catch (_) {
+      setSearchError("Search failed. Is the backend running?");
+      toast("Backend unreachable — enable mock mode", "error");
+    } finally { setIsSearching(false); }
   };
 
   // ── Interact handler ────────────────────────────────────────────────────────
@@ -163,6 +172,14 @@ export default function App() {
   const ctr = interactions.length
     ? (interactions.filter(i => i.action === "click" || i.action === "cart").length / interactions.length * 100).toFixed(1)
     : "—";
+
+  // Pre-compute sparkline points once per loss_history change instead of on every render
+  const sparklinePoints = useMemo(() => {
+    const h = rlMetrics.loss_history;
+    if (h.length < 2) return null;
+    const min = Math.min(...h), max = Math.max(...h), range = max - min || 1;
+    return h.map((v, i) => `${i},${1 - (v - min) / range}`).join(" ");
+  }, [rlMetrics.loss_history]);
 
   // ── Shared class shorthands ──────────────────────────────────────────────────
   const CARD    = "rounded-xl border border-[#babbbd] dark:border-[#627d9a]/70 bg-white/50 dark:bg-[#fffef7]/5 shadow-sm";
@@ -285,28 +302,35 @@ export default function App() {
           </div>
         </div>
 
-        {/* Recently Viewed strip */}
-        {!useMock && profileStats.recent_items?.length > 0 && (
-          <div className={`flex items-center gap-4 px-6 py-2 overflow-x-auto border-t ${DIVIDER} bg-[#babbbd]/10 dark:bg-[#fffef7]/3`}>
-            <span className="font-mono tracking-widest uppercase text-[#babbbd] dark:text-[#627d9a] whitespace-nowrap font-bold" style={{ fontSize: 9 }}>
-              Recently Viewed
-            </span>
-            {profileStats.recent_items.map((item, i) => (
-              <div key={i} className="flex items-center gap-2 group cursor-pointer" title={item.title}>
-                <div className={`w-8 h-10 rounded overflow-hidden relative border ${DIVIDER} group-hover:border-[#dfc5a4] transition-colors`}>
-                  <img src={item.image_url} alt="" className="w-full h-full object-cover" />
-                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                    <span style={{ fontSize: 8 }}>{item.action === "cart" ? "🛒" : "👁"}</span>
+        {/* Recently Viewed strip — live: server profile, mock: local interactions */}
+        {(() => {
+          const items = useMock
+            ? interactions.slice(0, 8)
+            : profileStats.recent_items;
+          if (!items?.length) return null;
+          return (
+            <div className={`flex items-center gap-4 px-6 py-2 overflow-x-auto border-t ${DIVIDER} bg-[#babbbd]/10 dark:bg-[#fffef7]/3`}>
+              <span className="font-mono tracking-widest uppercase text-[#babbbd] dark:text-[#627d9a] whitespace-nowrap font-bold flex-shrink-0" style={{ fontSize: 9 }}>
+                Recently Viewed
+              </span>
+              {items.map((item, i) => (
+                <div key={i} className="flex items-center gap-2 group cursor-pointer flex-shrink-0" title={item.title}>
+                  {item.image_url ? (
+                    <div className={`w-8 h-10 rounded overflow-hidden relative border ${DIVIDER} group-hover:border-[#dfc5a4] transition-colors`}>
+                      <img src={item.image_url} alt="" className="w-full h-full object-cover" />
+                    </div>
+                  ) : (
+                    <div className="w-8 h-10 rounded flex-shrink-0" style={{ background: item.cover_color || "#2e3257" }} />
+                  )}
+                  <div style={{ maxWidth: 80 }}>
+                    <p className="truncate text-[#2e3257] dark:text-[#fffef7] font-medium" style={{ fontSize: 10 }}>{item.title}</p>
+                    <p className="truncate text-[#babbbd] dark:text-[#627d9a]" style={{ fontSize: 8 }}>{item.author}</p>
                   </div>
                 </div>
-                <div style={{ maxWidth: 80 }}>
-                  <p className="truncate text-[#2e3257] dark:text-[#fffef7] font-medium" style={{ fontSize: 10 }}>{item.title}</p>
-                  <p className="truncate text-[#babbbd] dark:text-[#627d9a]" style={{ fontSize: 8 }}>{item.author}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          );
+        })()}
       </header>
 
       {/* ── MAIN ────────────────────────────────────────────────────────────── */}
@@ -417,11 +441,17 @@ export default function App() {
               {/* Results */}
               <div className="flex-1 overflow-y-auto space-y-2 pr-1 pb-2">
                 {isSearching ? (
-                  <div className="flex flex-col items-center justify-center h-40 gap-3">
-                    <div className="flex gap-1.5">
-                      {[0,1,2].map(i => <div key={i} className="w-2 h-2 rounded-full bg-[#2e3257] dark:bg-[#dfc5a4] shimmer" style={{ animationDelay: `${i * 0.2}s` }} />)}
-                    </div>
-                    <p className="text-[11px] text-[#babbbd] dark:text-[#627d9a]">Encoding query → FAISS search…</p>
+                  [0,1,2,4].map(i => <SkeletonCard key={i} size="md" />)
+                ) : searchError ? (
+                  <div className={`p-4 rounded-xl border ${DIVIDER} text-center space-y-2`}>
+                    <p className="text-[12px] font-medium text-red-500 dark:text-red-400">{searchError}</p>
+                    <button
+                      onClick={handleSearch}
+                      className="text-[11px] px-3 py-1.5 rounded-lg border border-[#babbbd] dark:border-[#627d9a]/70
+                                 text-[#627d9a] dark:text-[#babbbd] hover:bg-[#dfc5a4]/20 hover:border-[#dfc5a4] transition-all"
+                    >
+                      ↺ Retry
+                    </button>
                   </div>
                 ) : searchResults.length > 0 ? (
                   searchResults.map((book, i) => (
@@ -456,7 +486,18 @@ export default function App() {
                       : `border-[#babbbd] dark:border-[#627d9a]/70 text-[#627d9a] dark:text-[#babbbd]
                          hover:bg-[#dfc5a4]/20 hover:border-[#dfc5a4] hover:text-[#2e3257] dark:hover:text-[#fffef7]`}`}
                 >
-                  {isLoadingRecs ? <span className="shimmer">Fetching…</span> : "↺ Refresh"}
+                  {isLoadingRecs ? (
+                    <span className="shimmer">Fetching…</span>
+                  ) : (
+                    <span>
+                      ↺ Refresh
+                      {lastRecsRefresh && (
+                        <span className="ml-1.5 text-[#babbbd] dark:text-[#627d9a] font-normal" style={{ fontSize: 9 }}>
+                          {lastRecsRefresh.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      )}
+                    </span>
+                  )}
                 </button>
               </div>
 
@@ -482,11 +523,17 @@ export default function App() {
 
               <div className="flex-1 overflow-y-auto space-y-2 pr-1">
                 {isLoadingRecs ? (
-                  <div className="flex flex-col items-center justify-center h-40 gap-3">
-                    <div className="flex gap-1.5">
-                      {[0,1,2].map(i => <div key={i} className="w-2 h-2 rounded-full bg-[#dfc5a4] shimmer" style={{ animationDelay: `${i * 0.2}s` }} />)}
-                    </div>
-                    <p className="text-[11px] text-[#babbbd] dark:text-[#627d9a]">Generating recommendations…</p>
+                  [0,1,2,3].map(i => <SkeletonCard key={i} size="sm" />)
+                ) : recsError ? (
+                  <div className={`p-4 rounded-xl border ${DIVIDER} text-center space-y-2`}>
+                    <p className="text-[12px] font-medium text-red-500 dark:text-red-400">{recsError}</p>
+                    <button
+                      onClick={loadRecs}
+                      className="text-[11px] px-3 py-1.5 rounded-lg border border-[#babbbd] dark:border-[#627d9a]/70
+                                 text-[#627d9a] dark:text-[#babbbd] hover:bg-[#dfc5a4]/20 hover:border-[#dfc5a4] transition-all"
+                    >
+                      ↺ Retry
+                    </button>
                   </div>
                 ) : (
                   (recTab === "pab" ? recommendations.people_also_buy : recommendations.you_might_like)?.map((book, i) => (
@@ -579,17 +626,13 @@ export default function App() {
                       {rlMetrics.loss_history.length > 0 ? rlMetrics.loss_history.at(-1).toFixed(4) : "0.0000"}
                     </span>
                   </div>
-                  {rlMetrics.loss_history.length > 1 ? (
+                  {sparklinePoints ? (
                     <div className="h-14 w-full relative" style={{ borderBottom: "1px solid #babbbd55" }}>
                       <svg className="absolute inset-0 w-full h-full overflow-visible" preserveAspectRatio="none"
                         viewBox={`0 0 ${Math.max(1, rlMetrics.loss_history.length - 1)} 1`}>
                         <polyline
                           fill="none" stroke="#627d9a" strokeWidth="0.05" vectorEffect="non-scaling-stroke"
-                          points={rlMetrics.loss_history.map((v, i) => {
-                            const min = Math.min(...rlMetrics.loss_history), max = Math.max(...rlMetrics.loss_history);
-                            const range = max - min || 1;
-                            return `${i},${1 - (v - min) / range}`;
-                          }).join(" ")}
+                          points={sparklinePoints}
                         />
                       </svg>
                     </div>

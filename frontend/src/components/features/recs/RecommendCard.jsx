@@ -113,7 +113,7 @@ export function RecommendCard({ book, onInteract, onAskAI, rank }) {
                 {book.title}
               </p>
               <p className="text-[#627d9a] dark:text-[#babbbd] mb-2" style={{ fontSize: 10 }}>by {author}</p>
-              <div className="text-[#2e3257] dark:text-[#fffef7]" style={{ fontSize: 10, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>
+              <div className="text-[#2e3257] dark:text-[#fffef7] overflow-y-auto" style={{ fontSize: 10, lineHeight: 1.55, whiteSpace: "pre-wrap", maxHeight: 140 }}>
                 {aiLoading ? (
                   <span className="shimmer text-[#627d9a]">Thinking…</span>
                 ) : (
