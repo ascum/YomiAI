@@ -1,5 +1,4 @@
 """POST /search — Mode 1: Multimodal Active Search."""
-import ast
 import logging
 import time
 
@@ -90,32 +89,22 @@ async def _run_pipeline(req: SearchRequest, debug: bool, container: AppContainer
     timings.update(engine_timings)
     timings["search_engine_total_ms"] = round((time.perf_counter() - t2) * 1000, 2)
 
-    # Metadata hydration
+    # Metadata hydration — delegate to metadata_repo.get_item() so genre,
+    # cover_color, and author parsing stay in one place.
     t3 = time.perf_counter()
     enriched  = []
-    meta_df   = container.metadata_repo.df
     max_score = results[0][1]["score"] if results else 1.0
 
     for asin, data in results:
-        if meta_df is not None and asin in meta_df.index:
-            row        = meta_df.loc[asin]
-            raw_author = row.get("author_name", "Unknown")
-            author     = str(raw_author)
-            if author.startswith("{") and "name" in author:
-                try:
-                    author = ast.literal_eval(author).get("name", author)
-                except Exception:
-                    pass
-            norm_score = (data["score"] / max_score) ** 0.5 if max_score > 0 else 0
-            enriched.append({
-                "id":        asin,
-                "title":     str(row.get("title", f"Book {asin[:8]}")),
-                "author":    author,
-                "image_url": str(row.get("image_url", "")),
-                "score":     float(norm_score),
-            })
-        else:
-            enriched.append({"id": asin, "title": f"Book {asin[:8]}", "score": 0.5})
+        item = container.metadata_repo.get_item(asin)
+        norm_score = (data["score"] / max_score) ** 0.5 if max_score > 0 else 0
+        item["score"] = float(norm_score)
+        # Pass through per-modality similarity scores when available
+        if "text_score" in data:
+            item["text_sim"] = float(data["text_score"])
+        if "image_score" in data:
+            item["img_sim"] = float(data["image_score"])
+        enriched.append(item)
 
     timings["metadata_hydration_ms"] = round((time.perf_counter() - t3) * 1000, 2)
     timings["total_ms"]              = round((time.perf_counter() - t_start) * 1000, 2)
