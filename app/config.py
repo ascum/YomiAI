@@ -20,9 +20,26 @@ class Settings:
     PROJECT_ROOT: str = _PROJECT_ROOT
     DATA_DIR: str = os.path.join(_PROJECT_ROOT, "data")
 
-    # ── Multimodal Embeddings ─────────────────────────────────────────────────
-    BLAIR_DIM: int = 1024
-    CLIP_DIM: int = 512
+    # ── Model Names (single source of truth — change here to swap models) ────────
+    TEXT_ENCODER_MODEL: str = "BAAI/bge-m3"
+    CLIP_MODEL_NAME:    str = "openai/clip-vit-base-patch32"
+
+    # ── Embedding Dimensions ──────────────────────────────────────────────────
+    TEXT_EMBED_DIM: int = 1024   # BGE-M3 output dim
+    CLIP_DIM:       int = 512
+
+    # ── Index File Names (relative to DATA_DIR) ───────────────────────────────
+    # File names encode which model built them; keys encode the role.
+    # When you re-embed with a new model, point these to the new files.
+    TEXT_INDEX_HNSW:        str = "bge_index_hnsw.faiss"       # BGE-M3, fast ANN
+    TEXT_INDEX_FLAT:        str = "bge_index_flat.faiss"       # BGE-M3, exact + reconstruct
+    TEXT_INDEX_HNSW_LEGACY: str = "blair_index_hnsw_legacy.faiss"  # BLaIR, fallback
+    TEXT_INDEX_FLAT_LEGACY: str = "blair_index_flat_legacy.faiss"  # BLaIR, last resort
+    CLIP_INDEX_HNSW:        str = "clip_index_hnsw.faiss"
+    CLIP_INDEX_FLAT:        str = "clip_index.faiss"
+
+    # ── Keyword Index ─────────────────────────────────────────────────────────
+    KEYWORD_INDEX_DIR: str = "tantivy_index"
 
     # ── Retrieval & Ranking ───────────────────────────────────────────────────
     TOP_K: int = 10
@@ -62,7 +79,7 @@ class Settings:
     EPSILON_DECAY_STEPS: int = 200
     NEG_SAMPLE_SIZE: int = 10
 
-    # ── BM25 Adaptive Search ──────────────────────────────────────────────────
+    # ── Keyword Search Tuning (Tantivy/BM25 parameters) ──────────────────────
     BM25_TOP_N: int = 30
     BM25_MIN_SCORE: float = 0.5
     BM25_HIGH_CONF: float = 0.6

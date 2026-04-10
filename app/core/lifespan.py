@@ -74,9 +74,10 @@ async def lifespan(app):
     container.profile_manager  = profile_manager
     container.recommend_engine = recommend_engine
 
-    # 4. BLaIR text encoder
-    log.info("Loading BLaIR text encoder (hyp1231/blair-roberta-large)…")
-    container.blair_model = model_loader.load_blair(device)
+    # 4. Text encoder (BGE-M3)
+    log.info(f"Loading text encoder ({settings.TEXT_ENCODER_MODEL})…")
+    container.text_encoder = model_loader.load_text_encoder(device)
+    model_loader.warmup_text_encoder()
 
     # 5. CLIP image encoder
     log.info("Loading CLIP image encoder (openai/clip-vit-base-patch32)…")
@@ -95,7 +96,14 @@ async def lifespan(app):
                       else "disabled (index not found)")
     log.info(f"Search engine ready ✓  |  Keyword index: {tantivy_status}")
 
-    # 6. Qwen LLM — lazy-loaded on first /ask_llm call (keeps VRAM free for NLLB)
+    # 6. Translation warmup — load NLLB-600M and compile CUDA kernels now so
+    #    the first real request doesn't pay the 274ms cold-start penalty.
+    await asyncio.get_event_loop().run_in_executor(
+        None,
+        __import__("app.infrastructure.translation", fromlist=["warmup"]).warmup,
+    )
+
+    # 7. Qwen LLM — lazy-loaded on first /ask_llm call (keeps VRAM free)
     log.info("Qwen LLM will lazy-load on first /ask_llm request.")
 
     # Infrastructure

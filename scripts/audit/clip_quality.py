@@ -1,18 +1,18 @@
 """
-scripts/audit_clip_quality.py
+scripts/audit/clip_quality.py
 ==============================
-Task 1.4 — CLIP model quality audit.
+CLIP model quality audit.
 
 1. Loads 5 test cover images (real samples from sample_covers/ OR generated placeholders)
-2. Encodes each with the current CLIP model (openai/clip-vit-base-patch32)
+2. Encodes each with the current CLIP model (via app.core.models)
 3. Searches the FAISS CLIP index for top-5 visual nearest neighbors
 4. Looks up titles and main_category from item_metadata.parquet
 5. Prints results + mean similarity scores
 6. Saves output to profiling/clip_audit_<date>.txt
 
 Usage:
-    python scripts/audit_clip_quality.py
-    python scripts/audit_clip_quality.py --top-k 5
+    python scripts/audit/clip_quality.py
+    python scripts/audit/clip_quality.py --top-k 5
 """
 
 import argparse
@@ -23,36 +23,28 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "src"))
 
 import numpy as np
 import pandas as pd
 import torch
 
-from config import CLIP_DIM
+from app.config import settings
+from app.repository.faiss_repo import Retriever
+from app.core import models as model_loader
 
 
-def load_clip(device):
-    from transformers import CLIPProcessor, CLIPModel
-    model_name = "openai/clip-vit-base-patch32"
-    print(f"[clip-audit] Loading {model_name} on {device}…")
-    model     = CLIPModel.from_pretrained(model_name).to(device)
-    processor = CLIPProcessor.from_pretrained(model_name)
-    model.eval()
-    # Task 1.4: confirm model configuration
-    print(
-        f"[clip-audit] Model: {model_name} | embedding dim: {CLIP_DIM} | device: {device}"
-    )
-    return model, processor, model_name
+def load_clip_model(device):
+    clip_model, clip_processor = model_loader.load_clip(device)
+    return clip_model, clip_processor, settings.CLIP_MODEL_NAME
 
 
-def encode_image(image, model, processor, device) -> np.ndarray:
+def encode_image(image, clip_model, clip_processor, device) -> np.ndarray:
     from PIL import Image
     if isinstance(image, (str, Path)):
         image = Image.open(str(image)).convert("RGB")
-    inputs = processor(images=image, return_tensors="pt").to(device)
+    inputs = clip_processor(images=image, return_tensors="pt").to(device)
     with torch.no_grad():
-        feat = model.get_image_features(**inputs)
+        feat = clip_model.get_image_features(**inputs)
         if not isinstance(feat, torch.Tensor):
             feat = feat.pooler_output if hasattr(feat, "pooler_output") else feat[1]
         feat = feat / feat.norm(dim=-1, keepdim=True)
@@ -85,19 +77,17 @@ def get_test_images():
         print(f"[clip-audit] Using {len(real_images)} real book cover images from disk.")
         return real_images[:5]
 
-    # Fall back to solid-color placeholders representing different aesthetic moods
     print("[clip-audit] Using solid-color placeholder images (no real covers found).")
     placeholder_specs = [
-        ("Dark/noir cover (dark gray)",   (40, 40, 40)),
-        ("Bright children's book (yellow)", (255, 220, 50)),
-        ("Science fiction (deep blue)",   (20, 20, 120)),
-        ("Romance (warm pink)",           (240, 130, 160)),
-        ("History / textbook (beige)",    (210, 195, 170)),
+        ("Dark/noir cover (dark gray)",      (40, 40, 40)),
+        ("Bright children's book (yellow)",  (255, 220, 50)),
+        ("Science fiction (deep blue)",      (20, 20, 120)),
+        ("Romance (warm pink)",              (240, 130, 160)),
+        ("History / textbook (beige)",       (210, 195, 170)),
     ]
     images = []
     for label, color in placeholder_specs:
         img = make_placeholder_image(color)
-        # Save the placeholder so it can be inspected
         out_path = test_covers_dir / f"{label.split('(')[0].strip().replace('/', '_').replace(' ', '_')}.jpg"
         img.save(str(out_path))
         images.append((label, img))
@@ -112,18 +102,16 @@ def main():
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # Load resources
-    from retriever import Retriever
-    DATA_DIR   = ROOT / "data"
-    cleora_data  = np.load(str(DATA_DIR / "cleora_embeddings.npz"))
-    retriever    = Retriever(str(DATA_DIR), cleora_data)
+    DATA_DIR    = Path(settings.DATA_DIR)
+    cleora_data = np.load(str(DATA_DIR / "cleora_embeddings.npz"))
+    retriever   = Retriever(str(DATA_DIR), cleora_data)
 
-    meta_path    = DATA_DIR / "item_metadata.parquet"
-    metadata_df  = pd.read_parquet(str(meta_path))
+    meta_path   = DATA_DIR / "item_metadata.parquet"
+    metadata_df = pd.read_parquet(str(meta_path))
     metadata_df.set_index("parent_asin", inplace=True)
     print(f"[clip-audit] Metadata rows: {len(metadata_df):,}")
 
-    clip_model, clip_processor, model_name = load_clip(device)
+    clip_model, clip_processor, model_name = load_clip_model(device)
 
     test_images = get_test_images()
     date_str    = datetime.now().strftime("%Y-%m-%d_%H-%M")
@@ -132,12 +120,12 @@ def main():
     out_file    = Path(args.output) if args.output else out_dir / f"clip_audit_{date_str}.txt"
 
     report_lines = [
-        f"CLIP Quality Audit",
-        f"Date        : {datetime.now().isoformat()}",
-        f"Model       : {model_name}",
-        f"Embedding dim: {CLIP_DIM}",
-        f"Device      : {device}",
-        f"Top-K       : {args.top_k}",
+        "CLIP Quality Audit",
+        f"Date          : {datetime.now().isoformat()}",
+        f"Model         : {model_name}",
+        f"Embedding dim : {settings.CLIP_DIM}",
+        f"Device        : {device}",
+        f"Top-K         : {args.top_k}",
         "=" * 64,
     ]
 
@@ -147,7 +135,6 @@ def main():
         print(f"\n[clip-audit] Processing: {label}")
         vec = encode_image(image_or_path, clip_model, clip_processor, device)
 
-        # FAISS CLIP search
         D, I = retriever.clip_index.search(vec.reshape(1, -1), args.top_k)
         results = [
             (retriever.asins[idx], float(D[0][r]))
@@ -178,7 +165,6 @@ def main():
         print(block_str)
         report_lines.append(block_str)
 
-    # Overall assessment
     overall_mean = sum(all_mean_scores) / len(all_mean_scores) if all_mean_scores else 0.0
     verdict = "GOOD (NO-GO on upgrade)" if overall_mean >= 0.20 else "POOR (consider upgrade)"
     summary = [

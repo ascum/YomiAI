@@ -30,7 +30,7 @@ class AppContainer:
     recommend_engine: Any = None          # app.services.passive_recommend.PassiveRecommendationEngine
 
     # ML models
-    blair_model:      Any = None          # sentence_transformers.SentenceTransformer
+    text_encoder:     Any = None          # sentence_transformers.SentenceTransformer (BGE-M3)
     clip_model:       Any = None          # transformers.CLIPModel
     clip_processor:   Any = None          # transformers.CLIPProcessor
     device:           torch.device = field(default_factory=lambda: torch.device("cpu"))

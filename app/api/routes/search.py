@@ -41,8 +41,8 @@ async def _run_pipeline(req: SearchRequest, debug: bool, container: AppContainer
     query_for_encoding = req.query
     if req.query:
         try:
-            from app.infrastructure.translation import translate_vi_to_en
-            translated = await anyio.to_thread.run_sync(translate_vi_to_en, req.query)
+            from app.infrastructure.translation import translate_to_en
+            translated = await anyio.to_thread.run_sync(translate_to_en, req.query)
             if translated != req.query:
                 log.info(f"[Translation] '{req.query}' → '{translated}'")
             query_for_encoding = translated
@@ -50,7 +50,7 @@ async def _run_pipeline(req: SearchRequest, debug: bool, container: AppContainer
             log.warning(f"[Translation] Hook failed, using original query: {e}")
     timings["translate_ms"] = round((time.perf_counter() - t0) * 1000, 2)
 
-    # Parallel encoding (BLaIR + CLIP)
+    # Parallel encoding (text + CLIP)
     text_vec  = None
     image_vec = None
 
@@ -58,9 +58,9 @@ async def _run_pipeline(req: SearchRequest, debug: bool, container: AppContainer
         nonlocal text_vec
         t = time.perf_counter()
         text_vec = await anyio.to_thread.run_sync(
-            ml.encode_text, query_for_encoding, container.blair_model
+            ml.encode_text, query_for_encoding, container.text_encoder
         ) if query_for_encoding else None
-        timings["encode_blair_ms"] = round((time.perf_counter() - t) * 1000, 2)
+        timings["encode_text_ms"] = round((time.perf_counter() - t) * 1000, 2)
 
     async def encode_image_task():
         nonlocal image_vec

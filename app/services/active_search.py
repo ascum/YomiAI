@@ -26,9 +26,9 @@ class ActiveSearchEngine:
     Handles user-initiated queries with text and/or image.
 
     Pipeline:
-      0. BM25 keyword search  (Tantivy Rust index)
-      1. BLaIR FAISS search   (text)  → Top-50 semantic matches
-      2. CLIP  FAISS search   (image) → Top-50 visual matches
+      0. Keyword search   (Tantivy Rust / BM25 index)
+      1. Text FAISS search (text encoder)  → Top-50 semantic matches
+      2. CLIP FAISS search (image encoder) → Top-50 visual matches
       3. Adaptive Weighted RRF
       4. Metadata filter  → drop ASINs absent from the parquet DB
       5. BGE Reranker     → cross-encoder re-scores top-20 (disabled by default)
@@ -48,7 +48,7 @@ class ActiveSearchEngine:
     # ── Tantivy index loading ──────────────────────────────────────────────────
 
     def _load_tantivy_index(self):
-        index_path = os.path.join(self._data_dir, "tantivy_index")
+        index_path = os.path.join(self._data_dir, settings.KEYWORD_INDEX_DIR)
         try:
             import tantivy
             if not os.path.exists(index_path):
@@ -117,7 +117,7 @@ class ActiveSearchEngine:
                     scores[asin] = {"score": 0.0, "text_sim": 0.0,
                                     "img_sim": 0.0, "bm25_score": 0.0}
                 scores[asin]["score"] += weight * (1.0 / (k + rank + 1))
-                if modality == "blair":
+                if modality == "text":
                     scores[asin]["text_sim"]   = float(raw_score)
                 elif modality == "clip":
                     scores[asin]["img_sim"]    = float(raw_score)
@@ -149,17 +149,17 @@ class ActiveSearchEngine:
         timings["tantivy_ms"] = round((time.perf_counter() - t0) * 1000, 2)
 
         t1 = time.perf_counter()
-        blair_results = []
+        text_results = []
         if has_text:
-            D, I = self.retriever.blair_index.search(
+            D, I = self.retriever.text_index.search(
                 text_query_vec.astype("float32").reshape(1, -1), 50
             )
-            blair_results = [
+            text_results = [
                 (self.retriever.asins[i], float(D[0][idx]))
                 for idx, i in enumerate(I[0]) if i != -1
             ]
-            log.info(f"[HNSW] returned {len(blair_results)} hits | scores: min={min(s for _,s in blair_results):.4f} max={max(s for _,s in blair_results):.4f}" if blair_results else "[HNSW] returned 0 hits")
-        timings["blair_search_ms"] = round((time.perf_counter() - t1) * 1000, 2)
+            log.info(f"[HNSW] returned {len(text_results)} hits | scores: min={min(s for _,s in text_results):.4f} max={max(s for _,s in text_results):.4f}" if text_results else "[HNSW] returned 0 hits")
+        timings["text_search_ms"] = round((time.perf_counter() - t1) * 1000, 2)
 
         t2 = time.perf_counter()
         clip_results = []
@@ -177,14 +177,14 @@ class ActiveSearchEngine:
         semantic_weight = 1.0 - kw_weight * 0.8
         visual_weight   = (1.0 + BM25_VISUAL_BOOST) if has_image else 0.0
 
-        log.info(f"Search weights — Tantivy:{kw_weight:.2f}  BLaIR:{semantic_weight:.2f}  "
+        log.info(f"Search weights — Tantivy:{kw_weight:.2f}  Text:{semantic_weight:.2f}  "
                  f"CLIP:{visual_weight:.2f}  (conf={kw_conf:.2f}, img={'yes' if has_image else 'no'})")
 
         t3 = time.perf_counter()
         channels = [
-            ("tantivy",  bm25_hits,     kw_weight),
-            ("blair", blair_results, semantic_weight),
-            ("clip",  clip_results,  visual_weight),
+            ("tantivy", bm25_hits,    kw_weight),
+            ("text",    text_results, semantic_weight),
+            ("clip",    clip_results, visual_weight),
         ]
 
         if not any(items for _, items, w in channels if w > 0):
@@ -193,7 +193,7 @@ class ActiveSearchEngine:
                 return [], timings
             return []
 
-        if not blair_results and not clip_results and bm25_hits:
+        if not text_results and not clip_results and bm25_hits:
             log.info("Search: encoders unavailable, using Tantivy-only result.")
             final_ranking = [
                 (asin, {"score": 1.0 / (i + 1), "text_sim": 0.0,

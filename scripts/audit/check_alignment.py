@@ -14,8 +14,12 @@ import argparse
 import numpy as np
 import pandas as pd
 
-_ROOT      = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-DATA_DIR   = os.path.join(_ROOT, "data")
+_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, _ROOT)
+
+from app.config import settings
+
+DATA_DIR = settings.DATA_DIR
 
 PASS = "OK  "
 FAIL = "FAIL"
@@ -82,14 +86,14 @@ def check_asins(meta_df):
 # ── 3. FAISS flat index ───────────────────────────────────────────────────────
 
 def check_faiss_flat(asins, meta_df, n_sample):
-    print("\n[3] blair_index_bge_flat.faiss")
+    print(f"\n[3] {settings.TEXT_INDEX_FLAT}")
     try:
         import faiss
     except ImportError:
         warn("faiss not installed — skipping FAISS checks")
         return
 
-    path = os.path.join(DATA_DIR, "blair_index_bge_flat.faiss")
+    path = os.path.join(DATA_DIR, settings.TEXT_INDEX_FLAT)
     if not os.path.exists(path):
         fail(f"Not found: {path}")
         return
@@ -141,14 +145,14 @@ def check_faiss_flat(asins, meta_df, n_sample):
 # ── 4. FAISS HNSW index ───────────────────────────────────────────────────────
 
 def check_faiss_hnsw(asins, meta_df, n_sample):
-    print("\n[4] blair_index_bge_hnsw.faiss")
+    print(f"\n[4] {settings.TEXT_INDEX_HNSW}")
     try:
         import faiss
     except ImportError:
         warn("faiss not installed — skipping HNSW checks")
         return
 
-    path = os.path.join(DATA_DIR, "blair_index_bge_hnsw.faiss")
+    path = os.path.join(DATA_DIR, settings.TEXT_INDEX_HNSW)
     if not os.path.exists(path):
         warn(f"Not found (flat index will be used as fallback): {path}")
         return
@@ -170,7 +174,7 @@ def check_faiss_hnsw(asins, meta_df, n_sample):
         return
 
     asin_to_idx = {a: i for i, a in enumerate(asins)}
-    flat_path = os.path.join(DATA_DIR, "blair_index_bge_flat.faiss")
+    flat_path = os.path.join(DATA_DIR, settings.TEXT_INDEX_FLAT)
     if not os.path.exists(flat_path):
         warn("Flat index not found — skipping HNSW search quality check")
         return

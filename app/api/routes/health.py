@@ -13,7 +13,7 @@ def health(container: AppContainer = Depends(get_container)):
     return {
         "status":       "ready" if container.ready else "initializing",
         "catalog_size": len(retriever.asins) if retriever else 0,
-        "blair_live":   container.blair_model  is not None,
+        "text_encoder_live": container.text_encoder is not None,
         "clip_live":    container.clip_model   is not None,
         "device":       str(container.device),
     }

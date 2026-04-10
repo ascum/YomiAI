@@ -35,9 +35,9 @@ from app.config import settings
 
 DATA_DIR       = settings.DATA_DIR
 CHUNK_PATTERN  = os.path.join(DATA_DIR, "bge_embeddings_chunk_*.npz")
-OUT_HNSW       = os.path.join(DATA_DIR, "blair_index_bge_hnsw.faiss")
+OUT_HNSW       = os.path.join(DATA_DIR, settings.TEXT_INDEX_HNSW)
 
-EMBED_DIM      = 1024
+EMBED_DIM      = settings.TEXT_EMBED_DIM
 HNSW_M         = 32
 EF_CONSTRUCTION = 200
 EF_SEARCH      = 128
@@ -201,7 +201,7 @@ def main():
     print(f"\nDone in {elapsed/60:.1f} min")
     print("=" * 60)
     print("Next steps:")
-    print("  1. Update faiss_repo.py to load blair_index_bge_hnsw.faiss first")
+    print(f"  1. Verify TEXT_INDEX_HNSW={settings.TEXT_INDEX_HNSW!r} in app/config.py matches output above")
     print("  2. python scripts/audit/check_alignment.py")
     print("  3. Restart server")
     print("=" * 60)

@@ -129,7 +129,7 @@ def post_search(host: str, port: int, payload: dict) -> tuple[dict, float]:
 # ─── Report helpers ──────────────────────────────────────────────────────────
 
 STAGE_KEYS = [
-    ("encode_blair_ms",       "BLaIR encode"),
+    ("encode_text_ms",        "Text encode"),
     ("encode_clip_ms",        "CLIP encode"),
     ("faiss_rrf_rerank_ms",   "FAISS+RRF+Rerank"),
     ("metadata_hydration_ms", "Metadata hydration"),
@@ -137,7 +137,7 @@ STAGE_KEYS = [
 ]
 
 BUDGET_MS = {
-    "encode_blair_ms":       100,
+    "encode_text_ms":        100,
     "encode_clip_ms":        80,
     "faiss_rrf_rerank_ms":   600,   # FAISS (<50ms) + Reranker (<400ms) combined
     "metadata_hydration_ms": 20,

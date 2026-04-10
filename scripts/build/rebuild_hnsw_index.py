@@ -1,9 +1,15 @@
 import faiss
 import numpy as np
 import os
+import sys
 import time
 
-DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data")
+_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, _ROOT)
+
+from app.config import settings
+
+DATA_DIR = settings.DATA_DIR
 
 def rebuild_index(name, dim):
     flat_path = os.path.join(DATA_DIR, f"{name}_index.faiss")
@@ -45,8 +51,5 @@ def rebuild_index(name, dim):
     print("Done.")
 
 if __name__ == "__main__":
-    # BLaIR is 1024-dim
-    rebuild_index("blair", 1024)
-    
-    # CLIP is 512-dim
-    rebuild_index("clip", 512)
+    rebuild_index("blair", settings.TEXT_EMBED_DIM)   # text encoder index (BGE-M3, 1024-dim)
+    rebuild_index("clip",  settings.CLIP_DIM)          # CLIP image index  (512-dim)

@@ -127,22 +127,22 @@ class UserProfileManager:
         if not all_items:
             return
 
-        blair_vecs, clip_vecs, cleora_vecs = [], [], []
+        text_vecs, clip_vecs, cleora_vecs = [], [], []
         for item_id in all_items:
             if item_id in self.retriever.asin_to_idx:
                 idx = self.retriever.asin_to_idx[item_id]
-                blair_vecs.append(self.retriever.blair_flat.reconstruct(idx))
+                text_vecs.append(self.retriever.text_flat.reconstruct(idx))
                 clip_vecs.append(self.retriever.clip_index.reconstruct(idx))
             if (self.retriever.cleora_index is not None
                     and item_id in self.retriever.asin_to_cleora_idx):
                 c_idx = self.retriever.asin_to_cleora_idx[item_id]
                 cleora_vecs.append(self.retriever.cleora_index.reconstruct(c_idx))
 
-        if not blair_vecs:
+        if not text_vecs:
             return
-        weights = self._compute_order_weights(len(blair_vecs))
-        profile.text_profile   = np.average(blair_vecs, axis=0, weights=weights)
-        profile.visual_profile = np.average(clip_vecs,  axis=0, weights=weights)
+        weights = self._compute_order_weights(len(text_vecs))
+        profile.text_profile   = np.average(text_vecs, axis=0, weights=weights)
+        profile.visual_profile = np.average(clip_vecs, axis=0, weights=weights)
         if cleora_vecs:
             c_weights = self._compute_order_weights(len(cleora_vecs))
             profile.cleora_profile = np.average(cleora_vecs, axis=0, weights=c_weights)

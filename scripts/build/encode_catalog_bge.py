@@ -20,7 +20,7 @@ Pipeline:
        - If NOT in metadata: emit zero vector (1024-dim)
   4. Batch encode with BGE-M3 (batch_size=512, fp16)
   5. L2-normalize all vectors (cosine similarity via IndexFlatIP/HNSW)
-  6. Write to blair_index_bge_hnsw.faiss (HNSW graph for sub-ms search)
+  6. Write to TEXT_INDEX_HNSW (HNSW graph for sub-ms search; see app/config.py)
   7. Checkpoint every CHECKPOINT_EVERY items → bge_embeddings_checkpoint.npz
 
 Usage:
@@ -67,11 +67,11 @@ METADATA_PARQ   = os.path.join(DATA_DIR, "item_metadata.parquet")
 
 # Output files
 CHECKPOINT_NPZ  = os.path.join(DATA_DIR, "bge_embeddings_checkpoint.npz")
-OUT_INDEX_FLAT  = os.path.join(DATA_DIR, "blair_index_bge_flat.faiss")  # exact, for reconstruction
-OUT_INDEX_HNSW  = os.path.join(DATA_DIR, "blair_index_bge_hnsw.faiss")  # fast search
+OUT_INDEX_FLAT  = os.path.join(DATA_DIR, settings.TEXT_INDEX_FLAT)   # exact, for reconstruction
+OUT_INDEX_HNSW  = os.path.join(DATA_DIR, settings.TEXT_INDEX_HNSW)   # fast search
 
-MODEL_NAME      = "BAAI/bge-m3"
-EMBED_DIM       = 1024          # BGE-M3 output dimension
+MODEL_NAME      = settings.TEXT_ENCODER_MODEL
+EMBED_DIM       = settings.TEXT_EMBED_DIM
 BATCH_SIZE      = 512           # Best throughput on GPU
 CHECKPOINT_EVERY = 100_000      # Save checkpoint every N items
 
@@ -363,11 +363,11 @@ def build_faiss_indices(embeddings: np.ndarray, hnsw_only: bool = False):
     """
     Build two FAISS indices from the embedding matrix:
 
-    1. IndexFlatIP (blair_index_bge_flat.faiss)
+    1. IndexFlatIP  (TEXT_INDEX_FLAT  — see app/config.py)
        - Exact search, supports .reconstruct() for RL pipeline
        - Required by retriever.py's score_candidates() and get_asin_vec()
 
-    2. IndexHNSWFlat (blair_index_bge_hnsw.faiss)
+    2. IndexHNSWFlat (TEXT_INDEX_HNSW — see app/config.py)
        - Sub-millisecond approximate search (M=32, efConstruction=200)
        - Used by active_search_engine.py for the /search endpoint
     """

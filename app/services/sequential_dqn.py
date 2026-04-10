@@ -10,7 +10,7 @@ import torch.nn.functional as F
 
 from app.config import settings
 
-BLAIR_DIM       = settings.BLAIR_DIM
+TEXT_EMBED_DIM  = settings.TEXT_EMBED_DIM
 CLIP_DIM        = settings.CLIP_DIM
 SEQ_ITEM_PROJ_DIM = settings.SEQ_ITEM_PROJ_DIM
 GRU_HIDDEN_DIM  = settings.GRU_HIDDEN_DIM
@@ -19,24 +19,24 @@ GRU_DROPOUT     = settings.GRU_DROPOUT
 
 
 class DualStreamItemEncoder(nn.Module):
-    """Projects BLaIR (1024) and CLIP (512) into a shared 1024-dim space."""
+    """Projects text (TEXT_EMBED_DIM) and CLIP (CLIP_DIM) embeddings into a shared space."""
 
     def __init__(self, proj_dim: int = SEQ_ITEM_PROJ_DIM):
         super().__init__()
         self.proj_dim   = proj_dim
         self.output_dim = proj_dim * 2
 
-        self.blair_proj = nn.Linear(BLAIR_DIM, proj_dim)
-        self.clip_proj  = nn.Linear(CLIP_DIM,  proj_dim)
+        self.text_proj = nn.Linear(TEXT_EMBED_DIM, proj_dim)
+        self.clip_proj = nn.Linear(CLIP_DIM,       proj_dim)
 
-        for layer in [self.blair_proj, self.clip_proj]:
+        for layer in [self.text_proj, self.clip_proj]:
             nn.init.xavier_uniform_(layer.weight)
             nn.init.zeros_(layer.bias)
 
-    def forward(self, blair_vecs: torch.Tensor, clip_vecs: torch.Tensor) -> torch.Tensor:
-        b = F.normalize(self.blair_proj(blair_vecs), p=2, dim=-1)
-        c = F.normalize(self.clip_proj(clip_vecs),   p=2, dim=-1)
-        return torch.cat([b, c], dim=-1)
+    def forward(self, text_vecs: torch.Tensor, clip_vecs: torch.Tensor) -> torch.Tensor:
+        t = F.normalize(self.text_proj(text_vecs), p=2, dim=-1)
+        c = F.normalize(self.clip_proj(clip_vecs), p=2, dim=-1)
+        return torch.cat([t, c], dim=-1)
 
 
 class GRUUserEncoder(nn.Module):
@@ -57,12 +57,12 @@ class GRUUserEncoder(nn.Module):
             dropout=dropout if num_layers > 1 else 0.0,
         )
 
-    def forward(self, blair_seqs: torch.Tensor, clip_seqs: torch.Tensor,
+    def forward(self, text_seqs: torch.Tensor, clip_seqs: torch.Tensor,
                 lengths: torch.Tensor) -> torch.Tensor:
-        B, T, _ = blair_seqs.shape
-        blair_flat  = blair_seqs.reshape(B * T, -1)
+        B, T, _ = text_seqs.shape
+        text_flat   = text_seqs.reshape(B * T, -1)
         clip_flat   = clip_seqs.reshape(B * T, -1)
-        item_embeds = self.item_encoder(blair_flat, clip_flat).reshape(B, T, -1)
+        item_embeds = self.item_encoder(text_flat, clip_flat).reshape(B, T, -1)
 
         packed = nn.utils.rnn.pack_padded_sequence(
             item_embeds, lengths.cpu().clamp(min=1),
@@ -94,25 +94,25 @@ class SequentialDQN(nn.Module):
             nn.init.xavier_uniform_(layer.weight)
             nn.init.zeros_(layer.bias)
 
-    def encode_user(self, blair_seqs: torch.Tensor, clip_seqs: torch.Tensor,
+    def encode_user(self, text_seqs: torch.Tensor, clip_seqs: torch.Tensor,
                     lengths: torch.Tensor) -> torch.Tensor:
-        return self.user_encoder(blair_seqs, clip_seqs, lengths)
+        return self.user_encoder(text_seqs, clip_seqs, lengths)
 
-    def encode_item(self, blair_vecs: torch.Tensor,
+    def encode_item(self, text_vecs: torch.Tensor,
                     clip_vecs: torch.Tensor) -> torch.Tensor:
-        return self.item_encoder(blair_vecs, clip_vecs)
+        return self.item_encoder(text_vecs, clip_vecs)
 
     def forward(self, user_state: torch.Tensor,
-                blair_vecs: torch.Tensor,
+                text_vecs: torch.Tensor,
                 clip_vecs: torch.Tensor) -> torch.Tensor:
-        item_repr = self.item_encoder(blair_vecs, clip_vecs)
+        item_repr = self.item_encoder(text_vecs, clip_vecs)
         x = torch.cat([user_state, item_repr], dim=-1)
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         x = F.relu(self.fc3(x))
         return self.score_head(x)
 
-    def forward_from_sequence(self, blair_seqs, clip_seqs, lengths,
-                               cand_blair, cand_clip) -> torch.Tensor:
-        h_t = self.encode_user(blair_seqs, clip_seqs, lengths)
-        return self.forward(h_t, cand_blair, cand_clip)
+    def forward_from_sequence(self, text_seqs, clip_seqs, lengths,
+                               cand_text, cand_clip) -> torch.Tensor:
+        h_t = self.encode_user(text_seqs, clip_seqs, lengths)
+        return self.forward(h_t, cand_text, cand_clip)

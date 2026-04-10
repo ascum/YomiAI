@@ -18,7 +18,7 @@ import torch.optim as optim
 from app.config import settings
 from app.services.sequential_dqn import SequentialDQN
 
-BLAIR_DIM           = settings.BLAIR_DIM
+TEXT_EMBED_DIM      = settings.TEXT_EMBED_DIM
 CLIP_DIM            = settings.CLIP_DIM
 REPLAY_BUFFER_SIZE  = settings.REPLAY_BUFFER_SIZE
 REPLAY_BATCH_SIZE   = settings.REPLAY_BATCH_SIZE
@@ -54,6 +54,17 @@ class SequentialReplayBuffer:
 
     def __len__(self):
         return len(self.buffer)
+
+
+def _migrate_state_dict(state: dict) -> dict:
+    """Rename legacy checkpoint keys so old saves load into the refactored model."""
+    renames = {"blair_proj": "text_proj"}
+    out = {}
+    for k, v in state.items():
+        for old, new in renames.items():
+            k = k.replace(old, new)
+        out[k] = v
+    return out
 
 
 class RLSequentialFilter:
@@ -104,29 +115,29 @@ class RLSequentialFilter:
     def _build_seq_tensors(self, click_seq_asins: list, device=None):
         if device is None:
             device = self.device
-        blair_list, clip_list = [], []
+        text_list, clip_list = [], []
         for asin in click_seq_asins[-MAX_SEQ_LEN:]:
             embs = self.retriever.get_asin_vec(asin)
             if embs is not None:
-                b, c = embs
-                blair_list.append(b)
+                t, c = embs
+                text_list.append(t)
                 clip_list.append(c)
 
-        actual_len = len(blair_list)
+        actual_len = len(text_list)
         if actual_len == 0:
             return (
-                torch.zeros(1, MAX_SEQ_LEN, BLAIR_DIM, device=device),
-                torch.zeros(1, MAX_SEQ_LEN, CLIP_DIM,  device=device),
+                torch.zeros(1, MAX_SEQ_LEN, TEXT_EMBED_DIM, device=device),
+                torch.zeros(1, MAX_SEQ_LEN, CLIP_DIM,       device=device),
                 torch.tensor([0], device=device),
             )
 
-        blair_arr = np.zeros((MAX_SEQ_LEN, BLAIR_DIM), dtype=np.float32)
-        clip_arr  = np.zeros((MAX_SEQ_LEN, CLIP_DIM),  dtype=np.float32)
-        blair_arr[:actual_len] = np.array(blair_list)
-        clip_arr[:actual_len]  = np.array(clip_list)
+        text_arr = np.zeros((MAX_SEQ_LEN, TEXT_EMBED_DIM), dtype=np.float32)
+        clip_arr = np.zeros((MAX_SEQ_LEN, CLIP_DIM),       dtype=np.float32)
+        text_arr[:actual_len] = np.array(text_list)
+        clip_arr[:actual_len] = np.array(clip_list)
 
         return (
-            torch.FloatTensor(blair_arr).unsqueeze(0).to(device),
+            torch.FloatTensor(text_arr).unsqueeze(0).to(device),
             torch.FloatTensor(clip_arr).unsqueeze(0).to(device),
             torch.tensor([actual_len], device=device),
         )
@@ -135,27 +146,27 @@ class RLSequentialFilter:
         if device is None:
             device = self.device
         B = len(batch_seqs)
-        blair_batch = np.zeros((B, MAX_SEQ_LEN, BLAIR_DIM), dtype=np.float32)
-        clip_batch  = np.zeros((B, MAX_SEQ_LEN, CLIP_DIM),  dtype=np.float32)
-        lengths     = np.zeros(B, dtype=np.int64)
+        text_batch = np.zeros((B, MAX_SEQ_LEN, TEXT_EMBED_DIM), dtype=np.float32)
+        clip_batch = np.zeros((B, MAX_SEQ_LEN, CLIP_DIM),       dtype=np.float32)
+        lengths    = np.zeros(B, dtype=np.int64)
 
         for i, seq_asins in enumerate(batch_seqs):
             truncated = seq_asins[-MAX_SEQ_LEN:]
-            blair_list, clip_list = [], []
+            text_list, clip_list = [], []
             for asin in truncated:
                 embs = self.retriever.get_asin_vec(asin)
                 if embs is not None:
-                    b, c = embs
-                    blair_list.append(b)
+                    t, c = embs
+                    text_list.append(t)
                     clip_list.append(c)
-            n = len(blair_list)
+            n = len(text_list)
             if n > 0:
-                blair_batch[i, :n] = np.array(blair_list)
-                clip_batch[i, :n]  = np.array(clip_list)
+                text_batch[i, :n] = np.array(text_list)
+                clip_batch[i, :n] = np.array(clip_list)
             lengths[i] = n
 
         return (
-            torch.FloatTensor(blair_batch).to(device),
+            torch.FloatTensor(text_batch).to(device),
             torch.FloatTensor(clip_batch).to(device),
             torch.LongTensor(lengths).to(device),
         )
@@ -170,32 +181,32 @@ class RLSequentialFilter:
         if random.random() < self._epsilon:
             return {asin: random.random() for asin in candidate_asins}
 
-        blair_seq, clip_seq, length = self._build_seq_tensors(click_seq_asins)
+        text_seq, clip_seq, length = self._build_seq_tensors(click_seq_asins)
         if length.item() == 0:
             return {asin: 0.0 for asin in candidate_asins}
 
         self.model.eval()
         with torch.no_grad():
-            user_state = self.model.encode_user(blair_seq, clip_seq, length)
+            user_state = self.model.encode_user(text_seq, clip_seq, length)
 
-        blair_vecs, clip_vecs, valid_asins = [], [], []
+        text_vecs, clip_vecs, valid_asins = [], [], []
         for asin in candidate_asins:
             embs = self.retriever.get_asin_vec(asin)
             if embs is not None:
-                b, c = embs
-                blair_vecs.append(b)
+                t, c = embs
+                text_vecs.append(t)
                 clip_vecs.append(c)
                 valid_asins.append(asin)
 
         if not valid_asins:
             return {}
 
-        blair_t  = torch.FloatTensor(np.array(blair_vecs)).to(self.device)
+        text_t   = torch.FloatTensor(np.array(text_vecs)).to(self.device)
         clip_t   = torch.FloatTensor(np.array(clip_vecs)).to(self.device)
         user_exp = user_state.expand(len(valid_asins), -1)
 
         with torch.no_grad():
-            scores = self.model(user_exp, blair_t, clip_t).squeeze(-1)
+            scores = self.model(user_exp, text_t, clip_t).squeeze(-1)
 
         return {asin: float(s) for asin, s in zip(valid_asins, scores.cpu().numpy())}
 
@@ -218,43 +229,43 @@ class RLSequentialFilter:
         rewards_raw = [t[2] for t in batch]
         seqs_after  = [t[3] for t in batch]
 
-        blair_seqs, clip_seqs, lengths = self._build_batch_seq_tensors(seqs_before)
+        text_seqs, clip_seqs, lengths = self._build_batch_seq_tensors(seqs_before)
 
-        item_blairs, item_clips = [], []
+        item_texts, item_clips = [], []
         for asin in item_asins:
             embs = self.retriever.get_asin_vec(asin)
             if embs is not None:
-                b, c = embs
-                item_blairs.append(b)
+                t, c = embs
+                item_texts.append(t)
                 item_clips.append(c)
             else:
-                item_blairs.append(np.zeros(BLAIR_DIM, dtype=np.float32))
-                item_clips.append(np.zeros(CLIP_DIM,  dtype=np.float32))
+                item_texts.append(np.zeros(TEXT_EMBED_DIM, dtype=np.float32))
+                item_clips.append(np.zeros(CLIP_DIM,       dtype=np.float32))
 
-        item_blair_t = torch.FloatTensor(np.array(item_blairs)).to(self.device)
-        item_clip_t  = torch.FloatTensor(np.array(item_clips)).to(self.device)
+        item_text_t = torch.FloatTensor(np.array(item_texts)).to(self.device)
+        item_clip_t = torch.FloatTensor(np.array(item_clips)).to(self.device)
         rewards_t    = torch.FloatTensor(rewards_raw).to(self.device)
 
         self.target_model.eval()
         with torch.no_grad():
-            blair_next, clip_next, len_next = self._build_batch_seq_tensors(seqs_after)
-            h_next = self.target_model.encode_user(blair_next, clip_next, len_next)
+            text_next, clip_next, len_next = self._build_batch_seq_tensors(seqs_after)
+            h_next = self.target_model.encode_user(text_next, clip_next, len_next)
 
             neg_asins = random.sample(self._all_asins, min(NEG_SAMPLE_SIZE, len(self._all_asins)))
-            neg_blairs, neg_clips = [], []
+            neg_texts, neg_clips = [], []
             for asin in neg_asins:
                 embs = self.retriever.get_asin_vec(asin)
                 if embs is not None:
-                    neg_blairs.append(embs[0])
+                    neg_texts.append(embs[0])
                     neg_clips.append(embs[1])
 
-            if neg_blairs:
-                neg_b_t = torch.FloatTensor(np.array(neg_blairs)).to(self.device)
+            if neg_texts:
+                neg_t_t = torch.FloatTensor(np.array(neg_texts)).to(self.device)
                 neg_c_t = torch.FloatTensor(np.array(neg_clips)).to(self.device)
-                K = neg_b_t.size(0)
+                K = neg_t_t.size(0)
 
                 h_exp      = h_next.unsqueeze(1).expand(-1, K, -1).reshape(-1, GRU_HIDDEN_DIM)
-                neg_b_exp  = neg_b_t.unsqueeze(0).expand(actual_batch, -1, -1).reshape(-1, BLAIR_DIM)
+                neg_b_exp  = neg_t_t.unsqueeze(0).expand(actual_batch, -1, -1).reshape(-1, TEXT_EMBED_DIM)
                 neg_c_exp  = neg_c_t.unsqueeze(0).expand(actual_batch, -1, -1).reshape(-1, CLIP_DIM)
 
                 q_neg      = self.target_model(h_exp, neg_b_exp, neg_c_exp).reshape(actual_batch, K)
@@ -267,8 +278,8 @@ class RLSequentialFilter:
 
         self.model.train()
         self.optimizer.zero_grad()
-        h_t    = self.model.encode_user(blair_seqs, clip_seqs, lengths)
-        q_pred = self.model(h_t, item_blair_t, item_clip_t).squeeze(-1)
+        h_t    = self.model.encode_user(text_seqs, clip_seqs, lengths)
+        q_pred = self.model(h_t, item_text_t, item_clip_t).squeeze(-1)
         loss   = self.criterion(q_pred, q_targets)
         loss.backward()
         nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
@@ -317,8 +328,8 @@ class RLSequentialFilter:
             print(f"[RLSequentialFilter] Skipping {path} — arch mismatch")
             return
 
-        self.model.load_state_dict(checkpoint["model_state"])
-        self.target_model.load_state_dict(checkpoint["target_state"])
+        self.model.load_state_dict(_migrate_state_dict(checkpoint["model_state"]))
+        self.target_model.load_state_dict(_migrate_state_dict(checkpoint["target_state"]))
         self.optimizer.load_state_dict(checkpoint["optimizer_state"])
         self._step        = checkpoint.get("step", 0)
         self._epsilon     = checkpoint.get("epsilon", EPSILON_START)

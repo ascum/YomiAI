@@ -22,7 +22,7 @@ RRF_K                  = settings.RRF_K
 class PassiveRecommendationEngine:
     """
     System-initiated recommendations based on user behaviour profile.
-    3-layer funnel: Cleora (behavioural) → Content veto (BLaIR+CLIP) → RRF + RL re-rank.
+    3-layer funnel: Cleora (behavioural) → Content veto (Text+CLIP) → RRF + RL re-rank.
     """
 
     def __init__(self, retriever, profile_manager):
@@ -132,10 +132,10 @@ class PassiveRecommendationEngine:
 
         for asin in valid_candidates:
             idx        = self.retriever.asin_to_idx[asin]
-            item_blair = self.retriever.blair_flat.reconstruct(idx)
+            item_text  = self.retriever.text_flat.reconstruct(idx)
             item_clip  = self.retriever.clip_index.reconstruct(idx)
 
-            text_sim   = float(user_text_profile   @ item_blair)
+            text_sim   = float(user_text_profile   @ item_text)
             visual_sim = float(user_visual_profile @ item_clip)
 
             if text_sim >= SIMILARITY_THRESHOLD or visual_sim >= SIMILARITY_THRESHOLD:
@@ -169,7 +169,7 @@ class PassiveRecommendationEngine:
                 scores[asin]["best_layer"] = layer_name
 
         for rank, item in enumerate(text_ranked):
-            add_score(item["asin"], rank, "Cleora + BLaIR")
+            add_score(item["asin"], rank, "Cleora + Text")
         for rank, item in enumerate(visual_ranked):
             add_score(item["asin"], rank, "Cleora + CLIP")
         for rank, item in enumerate(rl_ranked):
