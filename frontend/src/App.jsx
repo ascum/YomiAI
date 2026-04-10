@@ -29,8 +29,8 @@ const MOCK_RECS = {
 export default function App() {
   // ── Session & auth ──────────────────────────────────────────────────────────
   const [sessionId] = useState(() => {
-    let id = localStorage.getItem("nba_session_id");
-    if (!id) { id = "sess_" + Math.random().toString(36).substring(2, 15); localStorage.setItem("nba_session_id", id); }
+    let id = localStorage.getItem("yomiai_session_id");
+    if (!id) { id = "sess_" + Math.random().toString(36).substring(2, 15); localStorage.setItem("yomiai_session_id", id); }
     return id;
   });
   const [userId, setUserId]   = useState("user_demo_01");
@@ -207,15 +207,15 @@ export default function App() {
 
           {/* Brand */}
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-[#2e3257] dark:bg-[#fffef7] shadow-sm">
-              <span className="text-[#fffef7] dark:text-[#2e3257]" style={{ fontSize: 16 }}>📚</span>
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-[#2e3257] dark:bg-[#dfc5a4] shadow-sm select-none">
+              <span className="font-serif font-bold text-[#fffef7] dark:text-[#2e3257]" style={{ fontSize: 20, lineHeight: 1 }}>愛</span>
             </div>
             <div>
-              <h1 className="font-serif font-bold tracking-tight leading-none" style={{ fontSize: 18 }}>
-                NBA<span className="text-[#627d9a] dark:text-[#dfc5a4]">sys</span>
+              <h1 className="font-serif font-bold tracking-tight leading-none text-[#2e3257] dark:text-[#fffef7]" style={{ fontSize: 18 }}>
+                Yomi<span className="text-[#627d9a] dark:text-[#dfc5a4]">愛</span>
               </h1>
               <p className="font-mono text-[#babbbd] dark:text-[#627d9a] mt-0.5 tracking-widest uppercase" style={{ fontSize: 8 }}>
-                DATN · Multimodal Rec Engine
+                読み愛 · Multimodal Rec Engine
               </p>
             </div>
           </div>
