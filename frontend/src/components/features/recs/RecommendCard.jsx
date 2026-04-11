@@ -10,7 +10,7 @@ function parseAuthor(raw) {
   return raw;
 }
 
-export function RecommendCard({ book, onInteract, onAskAI, rank }) {
+export function RecommendCard({ book, onInteract, onAskAIStream, rank }) {
   const [showAI, setShowAI]     = useState(false);
   const [aiText, setAiText]     = useState("");
   const [aiLoading, setLoading] = useState(false);
@@ -21,9 +21,17 @@ export function RecommendCard({ book, onInteract, onAskAI, rank }) {
     setShowAI(true);
     if (!aiText) {
       setLoading(true);
-      try   { const t = await onAskAI(book); setAiText(t); }
-      catch (_) { setAiText("Failed to query AI helper."); }
-      finally   { setLoading(false); }
+      setAiText("");
+      try {
+        const stream = onAskAIStream(book);
+        for await (const chunk of stream) {
+          setLoading(false); // Hide loading as soon as first token arrives
+          setAiText(prev => prev + chunk);
+        }
+      } catch (_) {
+        setAiText("Failed to query AI helper.");
+        setLoading(false);
+      }
     }
   };
 
