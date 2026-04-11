@@ -50,6 +50,7 @@ sample_covers/
 *.npz
 *.parquet
 *.zip
+*.rar
 *.tar.gz
 *.csv
 *.pt
