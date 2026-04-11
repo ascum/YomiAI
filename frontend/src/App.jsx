@@ -169,6 +169,21 @@ export default function App() {
     return d.response;
   };
 
+  const handleAskAIStream = (book) => {
+    if (useMock) {
+      // Return a generator that mimics a stream for mock mode
+      return (async function* () {
+        const text = "A fantastic book! The author masterfully weaves a gripping narrative. Highly recommended!";
+        const words = text.split(" ");
+        for (const word of words) {
+          await new Promise(r => setTimeout(r, 100));
+          yield word + " ";
+        }
+      })();
+    }
+    return api.askLLMStream(book.title, book.author, "Why should I read this? Give a short 2-sentence pitch.");
+  };
+
   const ctr = interactions.length
     ? (interactions.filter(i => i.action === "click" || i.action === "cart").length / interactions.length * 100).toFixed(1)
     : "—";
@@ -455,7 +470,7 @@ export default function App() {
                   </div>
                 ) : searchResults.length > 0 ? (
                   searchResults.map((book, i) => (
-                    <SearchResultCard key={i} book={book} onInteract={handleInteract} onAskAI={handleAskAI} />
+                    <SearchResultCard key={i} book={book} onInteract={handleInteract} onAskAIStream={handleAskAIStream} />
                   ))
                 ) : (
                   <div className="flex flex-col items-center justify-center h-48 gap-3 text-center">
@@ -537,7 +552,7 @@ export default function App() {
                   </div>
                 ) : (
                   (recTab === "pab" ? recommendations.people_also_buy : recommendations.you_might_like)?.map((book, i) => (
-                    <RecommendCard key={i} book={book} rank={i} onInteract={handleInteract} onAskAI={handleAskAI} />
+                    <RecommendCard key={i} book={book} rank={i} onInteract={handleInteract} onAskAIStream={handleAskAIStream} />
                   ))
                 )}
               </div>

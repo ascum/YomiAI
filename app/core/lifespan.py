@@ -103,8 +103,11 @@ async def lifespan(app):
         __import__("app.infrastructure.translation", fromlist=["warmup"]).warmup,
     )
 
-    # 7. Qwen LLM — lazy-loaded on first /ask_llm call (keeps VRAM free)
-    log.info("Qwen LLM will lazy-load on first /ask_llm request.")
+    # 7. Qwen LLM — pre-load for faster first response
+    log.info("Pre-loading Qwen2.5-1.5B-Instruct…")
+    from app.services import llm as llm_service
+    await asyncio.get_event_loop().run_in_executor(None, llm_service.ensure_loaded)
+    log.info("Qwen LLM ready ✓")
 
     # Infrastructure
     await db.connect()

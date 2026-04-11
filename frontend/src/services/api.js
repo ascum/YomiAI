@@ -42,4 +42,23 @@ export const api = {
     });
     return res.json();
   },
+
+  async *askLLMStream(title, author, userPrompt) {
+    const response = await fetch(`${API_BASE}/ask_llm_stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ item_id: "preview", title, author, user_prompt: userPrompt }),
+    });
+
+    if (!response.ok) throw new Error("Failed to start AI stream");
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      yield decoder.decode(value, { stream: true });
+    }
+  },
 };
