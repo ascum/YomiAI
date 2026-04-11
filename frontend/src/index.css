@@ -1,11 +1,19 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600&family=Playfair+Display:wght@400;600;700&family=DM+Mono:wght@300;400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,600&family=Syne:wght@400;500;600;700&family=DM+Mono:wght@300;400&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
-  html, body, #root { height: 100%; overflow: hidden; }
+  html, body { height: 100%; overflow: hidden; }
+  /* Render at 125% zoom equivalent: shrink layout box to 80%, scale it back up */
+  #root {
+    width: 80vw;
+    height: 80vh;
+    overflow: hidden;
+    transform: scale(1.25);
+    transform-origin: top left;
+  }
   * { box-sizing: border-box; }
 
   /* Remove focus ring on mouse click, keep it for keyboard navigation */
