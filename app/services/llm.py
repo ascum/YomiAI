@@ -3,6 +3,7 @@ app/services/llm.py — Qwen LLM lazy-loader and Wikipedia grounding.
 
 Extracted from api.py (_ensure_llm_loaded, ask_llm endpoint logic).
 """
+import functools
 import json
 import logging
 import urllib.parse
@@ -10,9 +11,18 @@ import urllib.request
 
 import torch
 
+from threading import Thread
+from typing import Generator
+
+import torch
+from transformers import TextIteratorStreamer
+
 log = logging.getLogger("nba_api")
 
 _llm_pipeline = None
+
+# Using 1.5B for better reasoning and quality (streaming handles the latency)
+MODEL_ID = "Qwen/Qwen2.5-1.5B-Instruct"
 
 
 def ensure_loaded() -> bool:
@@ -27,10 +37,10 @@ def ensure_loaded() -> bool:
     try:
         from transformers import pipeline as hf_pipeline
         device = 0 if torch.cuda.is_available() else -1
-        log.info("[Qwen] Lazy-loading Qwen2.5-1.5B-Instruct…")
+        log.info(f"[Qwen] Loading {MODEL_ID}…")
         _llm_pipeline = hf_pipeline(
             "text-generation",
-            model="Qwen/Qwen2.5-1.5B-Instruct",
+            model=MODEL_ID,
             device=device,
             torch_dtype=torch.float16,
         )
@@ -45,73 +55,189 @@ def get_pipeline():
     return _llm_pipeline
 
 
-def fetch_wikipedia_summary(title: str) -> str:
+import re
+
+def _clean_title(title: str) -> str:
+    """Removes 'Vol. X', '(X)', and other noise from book titles for better search."""
+    t = re.sub(r"\(.*?\)", "", title) # Remove (77), (Series)
+    t = re.sub(r"Vol\.\s*\d+", "", t, flags=re.IGNORECASE)
+    t = re.sub(r"Volume\s*\d+", "", t, flags=re.IGNORECASE)
+    return t.strip()
+
+@functools.lru_cache(maxsize=128)
+def fetch_wikipedia_summary(title: str, author: str = "") -> str:
     """Return a short Wikipedia extract for the book title, or a fallback string."""
     try:
-        query_safe = urllib.parse.quote(f"{title} (novel)")
+        clean_t = _clean_title(title)
+        
+        # Try search with author for better grounding
+        query_parts = [clean_t]
+        if author and author != "Unknown Author":
+            query_parts.append(author)
+        
+        query_safe = urllib.parse.quote(" ".join(query_parts))
         search_url = (
             f"https://en.wikipedia.org/w/api.php"
             f"?action=query&list=search&srsearch={query_safe}&utf8=&format=json&srlimit=1"
         )
-        req_search = urllib.request.Request(search_url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req_search, timeout=3) as resp:
+        req_search = urllib.request.Request(search_url, headers={"User-Agent": "NBA-AI-Assistant/1.0"})
+        with urllib.request.urlopen(req_search, timeout=1.5) as resp:
             search_data = json.loads(resp.read())
 
         hits = search_data.get("query", {}).get("search", [])
         if not hits:
-            return "Use your internal knowledge to summarize the plot."
+            # Fallback to title only if author search fails
+            query_safe = urllib.parse.quote(clean_t)
+            # ... repeat search logic or just try direct ...
+            return "No specific Wikipedia summary found. Use general series knowledge if available."
 
-        page_title  = urllib.parse.quote(hits[0]["title"])
+        page_title = urllib.parse.quote(hits[0]["title"])
         extract_url = (
             f"https://en.wikipedia.org/w/api.php"
-            f"?action=query&prop=extracts&exsentences=5&explaintext=1"
-            f"&titles={page_title}&format=json"
+            f"?action=query&prop=extracts&exsentences=20&explaintext=1"
+            f"&titles={page_title}&format=json&redirects=1"
         )
-        req_extract = urllib.request.Request(extract_url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req_extract, timeout=3) as resp:
+        req_extract = urllib.request.Request(extract_url, headers={"User-Agent": "NBA-AI-Assistant/1.0"})
+        with urllib.request.urlopen(req_extract, timeout=1.5) as resp:
             extract_data = json.loads(resp.read())
 
         pages   = extract_data["query"]["pages"]
         page_id = list(pages.keys())[0]
         if page_id == "-1":
-            return "Use your internal knowledge to summarize the plot."
+            return "No summary found."
 
         plot_text = pages[page_id].get("extract", "")
-        return f"Here is factual internet summary information about the book: {plot_text}\n\nUse this information to accurately summarize the plot."
+        return f"Wikipedia Context: {plot_text}"
 
     except Exception as e:
         log.warning(f"Wikipedia fetch for '{title}' failed: {e}")
-        return "Use your internal knowledge to summarize the plot."
+        return "No context available."
 
 
-def generate(title: str, author: str, user_prompt: str) -> str:
-    """Run a grounded LLM response about a book. Assumes ensure_loaded() returned True."""
-    llm            = _llm_pipeline
-    ground_truth   = fetch_wikipedia_summary(title)
+import numpy as np
+from app.core import models as models_core
+
+def rerank_context(query: str, raw_text: str, text_encoder, top_k: int = 3) -> str:
+    """
+    Split raw_text into sentences, embed them, and return the top_k most 
+    semantically similar to the query using the existing BGE-M3 encoder.
+    """
+    if not raw_text or text_encoder is None:
+        return raw_text
+
+    # Basic sentence splitting
+    sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', raw_text) if len(s.strip()) > 20]
+    if len(sentences) <= top_k:
+        return raw_text
+
+    try:
+        # 1. Embed the query
+        query_vec = models_core.encode_text(query, text_encoder)
+        if query_vec is None: return raw_text
+
+        # 2. Embed all sentences
+        sentence_vecs = []
+        for s in sentences:
+            v = models_core.encode_text(s, text_encoder)
+            sentence_vecs.append(v if v is not None else np.zeros((1, 1024)))
+        
+        # 3. Compute cosine similarities
+        sims = []
+        for v in sentence_vecs:
+            # query_vec is (1, 1024), v is (1, 1024)
+            score = np.dot(query_vec, v.T).item()
+            sims.append(score)
+
+        # 4. Pick top_k
+        top_indices = np.argsort(sims)[::-1][:top_k]
+        # Keep original order for flow, or sort by score? Let's sort by score for relevance.
+        results = [sentences[i] for i in top_indices]
+        return " ".join(results)
+
+    except Exception as e:
+        log.warning(f"Reranking failed: {e}")
+        return raw_text
+
+
+def generate_stream(title: str, author: str, user_prompt: str, local_description: str = "", text_encoder=None) -> Generator[str, None, None]:
+    """Yields token chunks as they are generated by the LLM."""
+    if not ensure_loaded():
+        yield "AI model failed to load."
+        return
+
+    llm = _llm_pipeline
+    ground_truth = fetch_wikipedia_summary(title, author)
+    
+    # Semantic Reranking: Use BGE-M3 to find the most relevant sentences from Wikipedia
+    # based on the book title and user prompt.
+    if ground_truth and text_encoder:
+        ground_truth = rerank_context(f"{title} {user_prompt}", ground_truth, text_encoder)
+
+    # Build a powerful context block
+    context = ""
+    if local_description:
+        context += f"PRIMARY SOURCE (Official Book Description):\n{local_description}\n\n"
+    if ground_truth:
+        context += f"SECONDARY SOURCE (General Series Info):\n{ground_truth}"
 
     messages = [
         {
             "role": "system",
             "content": (
-                "You are an AI book assistant. The user wants detailed information about a book. "
-                "Provide a short response structured EXACTLY like this using Markdown:\n\n"
-                "**Genre:** [Genre]\n**Plot Summary:** [2-3 sentences summarizing the plot]\n\n"
-                f"{ground_truth}"
+                "You are an AI book assistant. The user wants information about a specific book. "
+                "CRITICAL: Use the 'Official Book Description' as your primary source of truth. "
+                "If it contains plot details, summarize them accurately. "
+                "DO NOT invent fictional plot points or characters. If the description is short, use the 'General Series Info' for background. "
+                "Keep the response professional and focused on the real book.\n\n"
+                "Format EXACTLY like this:\n"
+                "**Genre:** [Genre]\n**Plot Summary:** [2-3 sentences]\n\n"
+                f"{context}"
             ),
         },
-        {"role": "user", "content": f"Tell me about the book '{title}' by {author}."},
+        {"role": "user", "content": f"Tell me about the book '{title}' by {author}. {user_prompt}"},
     ]
 
     prompt = llm.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
     inputs = llm.tokenizer(prompt, return_tensors="pt").to(llm.model.device)
-    out_tokens = llm.model.generate(
+
+    streamer = TextIteratorStreamer(llm.tokenizer, skip_prompt=True, skip_special_tokens=True)
+    
+    generation_kwargs = dict(
         **inputs,
-        max_new_tokens=250,
-        do_sample=True,
-        temperature=0.7,
+        streamer=streamer,
+        max_new_tokens=150,
+        do_sample=False,
         pad_token_id=llm.tokenizer.eos_token_id,
+        use_cache=True,
     )
-    answer = llm.tokenizer.decode(
-        out_tokens[0][inputs.input_ids.shape[1]:], skip_special_tokens=True
-    ).strip()
-    return answer
+
+    thread = Thread(target=llm.model.generate, kwargs=generation_kwargs)
+    thread.start()
+
+    for new_text in streamer:
+        if new_text:
+            yield new_text
+
+
+def generate(title: str, author: str, user_prompt: str, local_description: str = "") -> tuple[str, dict]:
+    """
+    Synchronous wrapper for generate_stream.
+    Returns (full_answer, timings_dict).
+    """
+    import time
+    timings = {"wiki_fetch_ms": 0.0, "llm_gen_ms": 0.0}
+    
+    start_wiki = time.perf_counter()
+    # Wiki fetch is already cached, so this is fast if called repeatedly
+    fetch_wikipedia_summary(title, author) 
+    timings["wiki_fetch_ms"] = round((time.perf_counter() - start_wiki) * 1000, 2)
+
+    start_gen = time.perf_counter()
+    full_text = []
+    for chunk in generate_stream(title, author, user_prompt, local_description):
+        full_text.append(chunk)
+    
+    timings["llm_gen_ms"] = round((time.perf_counter() - start_gen) * 1000, 2)
+    return "".join(full_text).strip(), timings
+
+
