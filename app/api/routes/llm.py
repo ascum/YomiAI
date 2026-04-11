@@ -39,7 +39,8 @@ async def ask_llm(req: AskLLMRequest,
             req.title,
             req.author,
             req.user_prompt,
-            local_desc
+            local_desc,
+            container.text_encoder
         )
         
         res = {"response": answer}
@@ -69,7 +70,13 @@ async def ask_llm_stream(req: AskLLMRequest,
     async def stream_generator():
         try:
             loop = asyncio.get_event_loop()
-            gen = llm_service.generate_stream(req.title, req.author, req.user_prompt, local_desc)
+            gen = llm_service.generate_stream(
+                req.title, 
+                req.author, 
+                req.user_prompt, 
+                local_desc, 
+                container.text_encoder
+            )
             
             while True:
                 chunk = await loop.run_in_executor(None, next, gen, None)
