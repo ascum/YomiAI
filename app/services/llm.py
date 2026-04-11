@@ -1,5 +1,5 @@
 """
-app/services/llm.py — Qwen LLM lazy-loader and Wikipedia grounding.
+app/services/llm.py — Gemma-4-E4B-it LLM lazy-loader and Wikipedia grounding.
 
 Extracted from api.py (_ensure_llm_loaded, ask_llm endpoint logic).
 """
@@ -21,7 +21,6 @@ log = logging.getLogger("nba_api")
 
 _llm_pipeline = None
 
-# Using 1.5B for better reasoning and quality (streaming handles the latency)
 MODEL_ID = "Qwen/Qwen2.5-1.5B-Instruct"
 
 
@@ -57,61 +56,182 @@ def get_pipeline():
 
 import re
 
-def _clean_title(title: str) -> str:
-    """Removes 'Vol. X', '(X)', and other noise from book titles for better search."""
-    t = re.sub(r"\(.*?\)", "", title) # Remove (77), (Series)
-    t = re.sub(r"Vol\.\s*\d+", "", t, flags=re.IGNORECASE)
-    t = re.sub(r"Volume\s*\d+", "", t, flags=re.IGNORECASE)
-    return t.strip()
+def _extract_series_name(title: str) -> str:
+    """Strip volume/chapter noise, return bare series name."""
+    t = re.sub(r"\(.*?\)", "", title)
+    t = re.sub(r",?\s*Vol\.?\s*\d+", "", t, flags=re.IGNORECASE)
+    t = re.sub(r",?\s*Volume\s*\d+", "", t, flags=re.IGNORECASE)
+    t = re.sub(r",?\s*Chapter\s*\d+", "", t, flags=re.IGNORECASE)
+    return t.strip().rstrip(",").strip()
+
+
+def _extract_vol_number(title: str) -> str | None:
+    """Return volume number string from title, e.g. '77'."""
+    m = re.search(r"Vol\.?\s*(\d+)", title, flags=re.IGNORECASE)
+    return m.group(1) if m else None
+
+
+def _build_wiki_queries(title: str, author: str) -> list[str]:
+    """Return Wikipedia search queries ordered most → least specific."""
+    series = _extract_series_name(title)
+    vol = _extract_vol_number(title)
+    queries = []
+    if vol:
+        queries.append(f"{series} Vol. {vol} manga")
+        queries.append(f"{series} volume {vol} plot")
+    queries.append(f"{series} manga arc plot summary")
+    queries.append(series)
+    return [q for q in queries if q.strip()]
+
+
+def _is_author_page(hit_title: str, author: str) -> bool:
+    """True if the Wikipedia hit looks like an author biography, not a content page."""
+    ht = hit_title.lower()
+    au = author.lower()
+    return au in ht or ht in au
+
+
+def _wiki_search(query: str) -> dict | None:
+    """Run one Wikipedia search and return the top hit dict, or None."""
+    query_safe = urllib.parse.quote(query)
+    url = (
+        f"https://en.wikipedia.org/w/api.php"
+        f"?action=query&list=search&srsearch={query_safe}&utf8=&format=json&srlimit=1"
+    )
+    req = urllib.request.Request(url, headers={"User-Agent": "NBA-AI-Assistant/1.0"})
+    with urllib.request.urlopen(req, timeout=2.0) as resp:
+        data = json.loads(resp.read())
+    hits = data.get("query", {}).get("search", [])
+    return hits[0] if hits else None
+
+
+def _wiki_extract(page_title: str) -> str:
+    """Fetch a large plain-text extract for a Wikipedia page title."""
+    page_safe = urllib.parse.quote(page_title)
+    url = (
+        f"https://en.wikipedia.org/w/api.php"
+        f"?action=query&prop=extracts&exsentences=40&explaintext=1"
+        f"&titles={page_safe}&format=json&redirects=1"
+    )
+    req = urllib.request.Request(url, headers={"User-Agent": "NBA-AI-Assistant/1.0"})
+    with urllib.request.urlopen(req, timeout=2.0) as resp:
+        data = json.loads(resp.read())
+    pages = data["query"]["pages"]
+    page_id = list(pages.keys())[0]
+    if page_id == "-1":
+        return ""
+    return pages[page_id].get("extract", "")
+
 
 @functools.lru_cache(maxsize=128)
 def fetch_wikipedia_summary(title: str, author: str = "") -> str:
-    """Return a short Wikipedia extract for the book title, or a fallback string."""
+    """
+    Try multiple Wikipedia queries from specific to broad, skipping author
+    biography pages. Returns the best extract found, or a fallback string.
+    """
     try:
-        clean_t = _clean_title(title)
-        
-        # Try search with author for better grounding
-        query_parts = [clean_t]
-        if author and author != "Unknown Author":
-            query_parts.append(author)
-        
-        query_safe = urllib.parse.quote(" ".join(query_parts))
-        search_url = (
-            f"https://en.wikipedia.org/w/api.php"
-            f"?action=query&list=search&srsearch={query_safe}&utf8=&format=json&srlimit=1"
-        )
-        req_search = urllib.request.Request(search_url, headers={"User-Agent": "NBA-AI-Assistant/1.0"})
-        with urllib.request.urlopen(req_search, timeout=1.5) as resp:
-            search_data = json.loads(resp.read())
-
-        hits = search_data.get("query", {}).get("search", [])
-        if not hits:
-            # Fallback to title only if author search fails
-            query_safe = urllib.parse.quote(clean_t)
-            # ... repeat search logic or just try direct ...
-            return "No specific Wikipedia summary found. Use general series knowledge if available."
-
-        page_title = urllib.parse.quote(hits[0]["title"])
-        extract_url = (
-            f"https://en.wikipedia.org/w/api.php"
-            f"?action=query&prop=extracts&exsentences=20&explaintext=1"
-            f"&titles={page_title}&format=json&redirects=1"
-        )
-        req_extract = urllib.request.Request(extract_url, headers={"User-Agent": "NBA-AI-Assistant/1.0"})
-        with urllib.request.urlopen(req_extract, timeout=1.5) as resp:
-            extract_data = json.loads(resp.read())
-
-        pages   = extract_data["query"]["pages"]
-        page_id = list(pages.keys())[0]
-        if page_id == "-1":
-            return "No summary found."
-
-        plot_text = pages[page_id].get("extract", "")
-        return f"Wikipedia Context: {plot_text}"
-
+        queries = _build_wiki_queries(title, author)
+        for query in queries:
+            hit = _wiki_search(query)
+            if not hit:
+                continue
+            if author and _is_author_page(hit["title"], author):
+                log.debug(f"[Wiki] Skipping author page '{hit['title']}', trying next query…")
+                continue
+            extract = _wiki_extract(hit["title"])
+            if extract:
+                log.debug(f"[Wiki] Hit via '{query}' → '{hit['title']}'")
+                return f"Wikipedia Context ({hit['title']}): {extract}"
+        return "No specific Wikipedia summary found. Use your training knowledge about this specific volume."
     except Exception as e:
         log.warning(f"Wikipedia fetch for '{title}' failed: {e}")
         return "No context available."
+
+
+_BOOKS_FIELDS = "items(volumeInfo(title,subtitle,description,authors))"
+
+def _books_request(raw_query: str) -> list:
+    """Run one Google Books search using proper query operators. Returns items list."""
+    params = urllib.parse.urlencode({
+        "q":           raw_query,
+        "maxResults":  "5",
+        "printType":   "books",
+        "langRestrict":"en",
+        "fields":      _BOOKS_FIELDS,
+    })
+    url = f"https://www.googleapis.com/books/v1/volumes?{params}"
+    log.info(f"[Books] GET {url}")
+    req = urllib.request.Request(url, headers={"User-Agent": "NBA-AI-Assistant/1.0"})
+    with urllib.request.urlopen(req, timeout=3.0) as resp:
+        return json.loads(resp.read()).get("items", [])
+
+
+def _fetch_google_books(title: str, author: str) -> str:
+    """
+    Query Google Books using intitle:/inauthor: operators for precision.
+    Falls back to title-only if the author causes zero results (e.g. wrong author in DB).
+    Returns a formatted string with description, or '' if nothing useful found.
+    """
+    series = _extract_series_name(title)
+    vol    = _extract_vol_number(title)
+    base   = f"{series} Vol. {vol}" if vol else series
+
+    # Ordered from most to least specific — intitle:/inauthor: are exact-field operators
+    query_candidates = [
+        f'intitle:"{base}" inauthor:"{author}"',  # precise: both fields
+        f'intitle:"{base}"',                       # title only — catches wrong-author entries
+    ]
+
+    items = []
+    for raw_query in query_candidates:
+        items = _books_request(raw_query)
+        if items:
+            log.debug(f"[Books] Query '{raw_query}' → {len(items)} result(s)")
+            break
+
+    if not items:
+        return ""
+
+    # Prefer the item whose title contains the volume number
+    best = None
+    if vol:
+        for item in items:
+            if vol in item.get("volumeInfo", {}).get("title", "").lower():
+                best = item["volumeInfo"]
+                break
+    if best is None:
+        best = items[0]["volumeInfo"]
+
+    description = best.get("description", "").strip()
+    subtitle    = best.get("subtitle", "").strip()
+    book_title  = best.get("title", "").strip()
+
+    if not description:
+        return ""
+
+    parts = [f"Google Books — {book_title}"]
+    if subtitle:
+        parts.append(f"Volume Title: {subtitle}")
+    parts.append(f"Description: {description}")
+    log.debug(f"[Books] Using '{book_title}' (subtitle: '{subtitle}')")
+    return "\n".join(parts)
+
+
+@functools.lru_cache(maxsize=128)
+def fetch_book_context(title: str, author: str = "") -> str:
+    """
+    Primary context fetcher. Tries Google Books first (volume-specific),
+    falls back to Wikipedia if Google Books returns nothing useful.
+    """
+    try:
+        google_result = _fetch_google_books(title, author)
+        if google_result:
+            return google_result
+        log.debug("[Books] No Google Books result, falling back to Wikipedia…")
+    except Exception as e:
+        log.warning(f"[Books] Google Books fetch failed for '{title}': {e}")
+
+    return fetch_wikipedia_summary(title, author)
 
 
 import numpy as np
@@ -159,55 +279,94 @@ def rerank_context(query: str, raw_text: str, text_encoder, top_k: int = 3) -> s
         return raw_text
 
 
-def generate_stream(title: str, author: str, user_prompt: str, local_description: str = "", text_encoder=None) -> Generator[str, None, None]:
+def _normalize_genre(genre: str) -> str:
+    """Extract English-only genre text, stripping non-ASCII characters."""
+    # Prefer English text already wrapped in parentheses e.g. "(Action, Adventure)"
+    m = re.search(r'\(([A-Za-z,&\s]+)\)', genre)
+    if m:
+        return m.group(1).strip()
+    # Fall back: strip all non-ASCII then clean up leftover punctuation
+    ascii_only = re.sub(r'[^\x00-\x7F]+', '', genre)
+    ascii_only = re.sub(r'[,\s]{2,}', ', ', ascii_only).strip().strip(',').strip()
+    return ascii_only or genre
+
+
+def generate_stream(title: str, author: str, user_prompt: str, local_description: str = "", text_encoder=None, genre: str = "") -> Generator[str, None, None]:
     """Yields token chunks as they are generated by the LLM."""
     if not ensure_loaded():
         yield "AI model failed to load."
         return
 
     llm = _llm_pipeline
-    ground_truth = fetch_wikipedia_summary(title, author)
+    ground_truth = fetch_book_context(title, author)
     
-    # Semantic Reranking: Use BGE-M3 to find the most relevant sentences from Wikipedia
-    # based on the book title and user prompt.
+    # Semantic Reranking: pull plot/arc sentences, not author bios or sales figures.
     if ground_truth and text_encoder:
-        ground_truth = rerank_context(f"{title} {user_prompt}", ground_truth, text_encoder)
+        _series = _extract_series_name(title)
+        _vol = _extract_vol_number(title) or ""
+        _rerank_q = f"plot summary arc story characters events {_series} volume {_vol}".strip()
+        ground_truth = rerank_context(_rerank_q, ground_truth, text_encoder, top_k=5)
 
-    # Build a powerful context block
-    context = ""
-    if local_description:
-        context += f"PRIMARY SOURCE (Official Book Description):\n{local_description}\n\n"
-    if ground_truth:
-        context += f"SECONDARY SOURCE (General Series Info):\n{ground_truth}"
+    # Prefer the most specific source — Google Books over generic local desc
+    _gt_valid = ground_truth and not ground_truth.startswith("No ")
+    description_for_model = ground_truth if _gt_valid else local_description
+
+    # Guard: no useful description → return static message, never call the model
+    _EMPTY_SIGNALS = ("No specific Wikipedia", "No context available", "No summary found", "No description")
+    _is_empty = (
+        not description_for_model
+        or not description_for_model.strip()
+        or any(description_for_model.strip().startswith(s) for s in _EMPTY_SIGNALS)
+    )
+    if _is_empty:
+        yield (
+            f"**Genre:** {_normalize_genre(genre) if genre else 'Unknown'}\n"
+            "**Plot Summary:** No description is available for this book.\n"
+            "**Pitch:** Check your local library or bookstore for more details."
+        )
+        return
+
+    clean_genre = _normalize_genre(genre) if genre else "Unknown"
 
     messages = [
         {
             "role": "system",
             "content": (
-                "You are an AI book assistant. The user wants information about a specific book. "
-                "CRITICAL: Use the 'Official Book Description' as your primary source of truth. "
-                "If it contains plot details, summarize them accurately. "
-                "DO NOT invent fictional plot points or characters. If the description is short, use the 'General Series Info' for background. "
-                "Keep the response professional and focused on the real book.\n\n"
-                "Format EXACTLY like this:\n"
-                "**Genre:** [Genre]\n**Plot Summary:** [2-3 sentences]\n\n"
-                f"{context}"
+                "You are a book description assistant. "
+                "Your ONLY job is to rewrite the provided book description into the output format. "
+                "Do NOT use your own knowledge. Do NOT add plot points not in the description. "
+                "Use ONLY what is written in the description below.\n\n"
+                f"Book: '{title}' by {author}\n\n"
+                f"Description:\n{description_for_model}"
             ),
         },
-        {"role": "user", "content": f"Tell me about the book '{title}' by {author}. {user_prompt}"},
+        {
+            "role": "user",
+            "content": (
+                "Rewrite the description above into this exact format:\n\n"
+                f"**Genre:** {clean_genre}\n"
+                "**Plot Summary:** [2-3 sentences using ONLY the description above]\n"
+                "**Pitch:** [1 sentence on why to read this specific volume]\n\n"
+                "Do not add anything not in the description."
+            ),
+        },
     ]
 
-    prompt = llm.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-    inputs = llm.tokenizer(prompt, return_tensors="pt").to(llm.model.device)
+    prompt = llm.tokenizer.apply_chat_template(
+        messages, tokenize=False, add_generation_prompt=True
+    )
+    _device = next(llm.model.parameters()).device
+    inputs = llm.tokenizer(text=prompt, return_tensors="pt").to(_device)
 
-    streamer = TextIteratorStreamer(llm.tokenizer, skip_prompt=True, skip_special_tokens=True)
-    
+    _tok = getattr(llm.tokenizer, "tokenizer", llm.tokenizer)  # unwrap AutoProcessor → inner tokenizer
+    streamer = TextIteratorStreamer(_tok, skip_prompt=True, skip_special_tokens=True)
+
     generation_kwargs = dict(
         **inputs,
         streamer=streamer,
-        max_new_tokens=150,
+        max_new_tokens=200,
         do_sample=False,
-        pad_token_id=llm.tokenizer.eos_token_id,
+        pad_token_id=_tok.eos_token_id,
         use_cache=True,
     )
 
@@ -219,7 +378,7 @@ def generate_stream(title: str, author: str, user_prompt: str, local_description
             yield new_text
 
 
-def generate(title: str, author: str, user_prompt: str, local_description: str = "") -> tuple[str, dict]:
+def generate(title: str, author: str, user_prompt: str, local_description: str = "", text_encoder=None, genre: str = "") -> tuple[str, dict]:
     """
     Synchronous wrapper for generate_stream.
     Returns (full_answer, timings_dict).
@@ -228,13 +387,12 @@ def generate(title: str, author: str, user_prompt: str, local_description: str =
     timings = {"wiki_fetch_ms": 0.0, "llm_gen_ms": 0.0}
     
     start_wiki = time.perf_counter()
-    # Wiki fetch is already cached, so this is fast if called repeatedly
-    fetch_wikipedia_summary(title, author) 
+    fetch_book_context(title, author)  # result cached; this just warms the cache
     timings["wiki_fetch_ms"] = round((time.perf_counter() - start_wiki) * 1000, 2)
 
     start_gen = time.perf_counter()
     full_text = []
-    for chunk in generate_stream(title, author, user_prompt, local_description):
+    for chunk in generate_stream(title, author, user_prompt, local_description, text_encoder, genre):
         full_text.append(chunk)
     
     timings["llm_gen_ms"] = round((time.perf_counter() - start_gen) * 1000, 2)

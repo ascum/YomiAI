@@ -29,6 +29,7 @@ async def ask_llm(req: AskLLMRequest,
     # Fetch local context from metadata repo
     item = container.metadata_repo.get_item(req.item_id)
     local_desc = item.get("description", "")
+    genre      = item.get("genre", "")
 
     try:
         start_total = asyncio.get_event_loop().time()
@@ -40,7 +41,8 @@ async def ask_llm(req: AskLLMRequest,
             req.author,
             req.user_prompt,
             local_desc,
-            container.text_encoder
+            container.text_encoder,
+            genre,
         )
         
         res = {"response": answer}
@@ -66,16 +68,18 @@ async def ask_llm_stream(req: AskLLMRequest,
     # Fetch local context from metadata repo
     item = container.metadata_repo.get_item(req.item_id)
     local_desc = item.get("description", "")
+    genre      = item.get("genre", "")
 
     async def stream_generator():
         try:
             loop = asyncio.get_event_loop()
             gen = llm_service.generate_stream(
-                req.title, 
-                req.author, 
-                req.user_prompt, 
-                local_desc, 
-                container.text_encoder
+                req.title,
+                req.author,
+                req.user_prompt,
+                local_desc,
+                container.text_encoder,
+                genre,
             )
             
             while True:
