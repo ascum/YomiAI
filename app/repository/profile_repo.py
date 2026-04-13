@@ -36,9 +36,10 @@ class UserProfileManager:
     Primary store is MongoDB; local JSON is used for migration fallback.
     """
 
-    def __init__(self, retriever=None, data_dir: str = None):
-        self.retriever = retriever
-        self.data_dir  = data_dir
+    def __init__(self, retriever=None, data_dir: str = None, category_encoder=None):
+        self.retriever          = retriever
+        self.data_dir           = data_dir
+        self._category_encoder  = category_encoder
         self._profiles_dir = os.path.join(data_dir, "profiles") if data_dir else None
         if self._profiles_dir:
             os.makedirs(self._profiles_dir, exist_ok=True)
@@ -82,6 +83,29 @@ class UserProfileManager:
                  if c.get("action", "click") in ("click", "cart")]
         return asins[-max_len:]
 
+    async def get_click_sequence_with_categories(
+        self, user_id: str,
+        max_len: int = settings.MAX_RECENT_INTERACTIONS,
+    ) -> tuple[list, list]:
+        """
+        Return (asin_list, category_id_list) for the DIF-SASRec model.
+
+        Both lists have the same length, in chronological order (most recent last).
+        Category IDs come from the CategoryEncoder vocabulary.
+        Falls back to UNK_ID (1) for every item when no encoder is set.
+        """
+        profile = await self.get_profile(user_id)
+        asins = [c["item_id"] for c in profile.clicks
+                 if c.get("action", "click") in ("click", "cart")]
+        asins = asins[-max_len:]
+
+        if self._category_encoder:
+            cat_ids = self._category_encoder.encode_sequence(asins)
+        else:
+            cat_ids = [1] * len(asins)   # UNK fallback
+
+        return asins, cat_ids
+
     # ── Event logging ─────────────────────────────────────────────────────────
 
     async def log_search(self, user_id: str, query_text, query_image, results):
@@ -106,6 +130,14 @@ class UserProfileManager:
             "action":    action,
         })
         profile.recent_interactions.append(item_id)
+
+        # Update category preferences for the "You Might Like" personal pipeline
+        if self._category_encoder:
+            cat_id   = self._category_encoder.get_category_id(item_id)
+            cat_name = self._category_encoder.get_category_name(cat_id)
+            if cat_name and cat_name not in ("PAD", "UNK"):
+                profile.preferred_categories[cat_name] += 1
+
         if self.retriever:
             self.update_aggregated_embeddings(profile)
         await self._save_to_mongo(user_id, profile)

@@ -28,6 +28,7 @@ class AppContainer:
     # Service layer
     search_engine:    Any = None          # app.services.active_search.ActiveSearchEngine
     recommend_engine: Any = None          # app.services.passive_recommend.PassiveRecommendationEngine
+    category_encoder: Any = None          # app.services.category_encoder.CategoryEncoder
 
     # ML models
     text_encoder:     Any = None          # sentence_transformers.SentenceTransformer (BGE-M3)

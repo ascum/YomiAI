@@ -58,16 +58,13 @@ async def interact(req: InteractRequest,
     except Exception as e:
         log.error(f"Redis queue push failed: {e}")
 
-    # Capture s_{t+1} AFTER profile update
-    click_seq_after = await profile_manager.get_click_sequence(req.user_id)
-
+    # ── Train the DIF-SASRec personal model ──────────────────────────────────
     loss = None
-    if click_seq_before:
-        loss = recommend_engine.train_rl(
-            req.user_id, req.item_id, reward,
+    if click_seq_before and req.action in ("click", "cart"):
+        loss = recommend_engine.train_personal(
+            req.user_id, req.item_id,
             click_seq_before=click_seq_before,
-            click_seq_after=click_seq_after,
         )
-        recommend_engine.save_rl_weights(req.user_id, settings.DATA_DIR)
+        recommend_engine.save_personal_weights(req.user_id, settings.DATA_DIR)
 
-    return {"status": "ok", "reward": reward, "rl_loss": loss}
+    return {"status": "ok", "reward": reward, "sasrec_loss": loss}

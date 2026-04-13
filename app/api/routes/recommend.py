@@ -17,7 +17,7 @@ async def recommend(user_id: str, container: AppContainer = Depends(require_read
     """
     Mode 2: 3-Layer NBA Funnel.
     Cold-start users receive random catalogue items.
-    Warm users go through Cleora → Veto → RL-DQN.
+    Warm users go through Cleora → Veto → DIF-SASRec.
     """
     retriever        = container.retriever
     profile_manager  = container.profile_manager
@@ -28,7 +28,7 @@ async def recommend(user_id: str, container: AppContainer = Depends(require_read
     if len(profile.clicks) < COLD_START_THRESHOLD:
         rec_dict, mode = _cold_start(retriever)
     else:
-        recommend_engine.load_rl_weights(user_id, settings.DATA_DIR)
+        recommend_engine.load_personal_weights(user_id, settings.DATA_DIR)
         res = await recommend_engine.recommend_for_user(user_id, top_k=5)
         if res is None:
             rec_dict, mode = _cold_start(retriever)
@@ -74,16 +74,14 @@ def _cold_start(retriever):
 
 @router.get("/rl_metrics")
 async def rl_metrics(user_id: str, container: AppContainer = Depends(require_ready)):
-    """Return real-time RL loss history and buffer sizing."""
+    """Return real-time DIF-SASRec model metrics."""
     recommend_engine = container.recommend_engine
-    recommend_engine.load_rl_weights(user_id, settings.DATA_DIR)
-    agent = recommend_engine.rl_cf
+    recommend_engine.load_personal_weights(user_id, settings.DATA_DIR)
+    agent = recommend_engine.sasrec
 
     return {
         "user_id":      user_id,
         "loss_history": agent.loss_history,
-        "buffer_size":  len(agent.buffer),
         "step":         agent._step,
-        "epsilon":      agent.epsilon,
-        "arch":         "GRU-SequentialDQN",
+        "arch":         "DIF-SASRec",
     }

@@ -7,6 +7,7 @@ Builds the AppContainer and attaches it to app.state.container.
 import asyncio
 import json
 import logging
+import os
 from contextlib import asynccontextmanager
 
 import numpy as np
@@ -68,9 +69,29 @@ async def lifespan(app):
     # 2. Item metadata (Parquet)
     container.metadata_repo = MetadataRepository(settings.DATA_DIR)
 
-    # 3. Pipeline objects
-    profile_manager  = UserProfileManager(retriever=retriever, data_dir=settings.DATA_DIR)
-    recommend_engine = PassiveRecommendationEngine(retriever, profile_manager)
+    # 3. Category encoder (for DIF-SASRec personal pipeline)
+    from app.services.category_encoder import CategoryEncoder
+    cat_encoder    = CategoryEncoder()
+    cat_vocab_path = os.path.join(settings.DATA_DIR, "category_vocab.json")
+    if os.path.exists(cat_vocab_path):
+        cat_encoder.load(cat_vocab_path)
+    else:
+        log.info("Building category vocabulary from item_metadata.parquet ...")
+        cat_encoder.build_from_parquet(
+            os.path.join(settings.DATA_DIR, "item_metadata.parquet")
+        )
+        cat_encoder.save(cat_vocab_path)
+    container.category_encoder = cat_encoder
+
+    # 3b. Pipeline objects
+    profile_manager  = UserProfileManager(
+        retriever=retriever,
+        data_dir=settings.DATA_DIR,
+        category_encoder=cat_encoder,
+    )
+    recommend_engine = PassiveRecommendationEngine(
+        retriever, profile_manager, category_encoder=cat_encoder
+    )
     container.profile_manager  = profile_manager
     container.recommend_engine = recommend_engine
 
