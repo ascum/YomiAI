@@ -20,8 +20,8 @@ const MOCK_RECS = {
     { id:"r002", title:"Assassin's Apprentice",    author:"Robin Hobb",       score:0.88, cover_color:"#0d2010", layer:"Cleora + CLIP" },
   ],
   you_might_like: [
-    { id:"r003", title:"The Black Prism",  author:"Brent Weeks",      score:0.86, cover_color:"#1a1000", layer:"RL-DQN" },
-    { id:"r004", title:"Kushiel's Dart",   author:"Jacqueline Carey", score:0.84, cover_color:"#100808", layer:"RL-DQN" },
+    { id:"r003", title:"The Black Prism",  author:"Brent Weeks",      score:0.86, cover_color:"#1a1000", layer:"DIF-SASRec" },
+    { id:"r004", title:"Kushiel's Dart",   author:"Jacqueline Carey", score:0.84, cover_color:"#100808", layer:"DIF-SASRec" },
   ],
 };
 
@@ -59,7 +59,7 @@ export default function App() {
   // ── RL / profile ────────────────────────────────────────────────────────────
   const [interactions, setInteractions] = useState([]);
   const [rlStep, setRlStep]             = useState(0);
-  const [rlMetrics, setRlMetrics]       = useState({ loss_history: [], buffer_size: 0, step: 0 });
+  const [rlMetrics, setRlMetrics]       = useState({ loss_history: [], step: 0, arch: "" });
   const [lastTrained, setLastTrained]   = useState(null);
   const [profileStats, setProfileStats] = useState({ recent_items: [] });
 
@@ -144,8 +144,8 @@ export default function App() {
       } else {
         setRlMetrics(p => ({
           loss_history: [...p.loss_history, Math.max(0.1, (p.loss_history.at(-1) || 0.8) - 0.05 + (Math.random() * 0.02 - 0.01))].slice(-100),
-          buffer_size: Math.min(2000, p.buffer_size + 1),
           step: p.step + 1,
+          arch: "DIF-SASRec",
         }));
       }
       setLastTrained(new Date());
@@ -300,7 +300,7 @@ export default function App() {
             {/* Stats */}
             <div className="flex gap-4">
               {[
-                { label: "RL Steps",     value: rlStep,             hi: rlStep > 0 },
+                { label: "Train Steps",   value: rlStep,             hi: rlStep > 0 },
                 { label: "CTR",          value: `${ctr}%`,          hi: ctr !== "—" },
                 { label: "Interactions", value: interactions.length, hi: interactions.length > 0 },
               ].map(s => (
@@ -490,7 +490,7 @@ export default function App() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-[12px] font-medium text-[#2e3257] dark:text-[#fffef7]">Personalized For You</p>
-                  <p className="text-[10px] text-[#627d9a] dark:text-[#babbbd] mt-0.5">Retrieval + RL-DQN Multi-mode</p>
+                  <p className="text-[10px] text-[#627d9a] dark:text-[#babbbd] mt-0.5">Retrieval + DIF-SASRec Multi-mode</p>
                 </div>
                 <button
                   onClick={loadRecs}
@@ -520,7 +520,7 @@ export default function App() {
               <div className={`flex rounded-xl p-1 border ${DIVIDER} bg-[#babbbd]/10 dark:bg-[#fffef7]/5`}>
                 {[
                   { id: "pab", label: "People Also Buy", desc: "Cleora + BGE-M3/CLIP" },
-                  { id: "yml", label: "You Might Like",  desc: "RL-DQN Personalized" },
+                  { id: "yml", label: "You Might Like",  desc: "DIF-SASRec Personalized" },
                 ].map(t => (
                   <button
                     key={t.id}
@@ -606,10 +606,10 @@ export default function App() {
                   <ProfileRadar interactions={interactions} />
                 </div>
 
-                {/* RL Training Feed */}
+                {/* SASRec Training Feed */}
                 <div className={`p-3 ${CARD}`}>
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-[10px] font-semibold tracking-widest uppercase text-[#babbbd] dark:text-[#627d9a]">RL Feed</p>
+                    <p className="text-[10px] font-semibold tracking-widest uppercase text-[#babbbd] dark:text-[#627d9a]">Train Feed</p>
                     <div className="flex items-center gap-1.5">
                       <div className={`w-1.5 h-1.5 rounded-full ${rlStep > 0 ? "bg-emerald-500 live-dot" : "bg-[#babbbd] dark:bg-[#627d9a]"}`} />
                       <span className="font-mono text-[#babbbd] dark:text-[#627d9a]" style={{ fontSize: 9 }}>{rlStep} steps</span>
@@ -619,7 +619,7 @@ export default function App() {
                     {interactions.slice(0, 6).map((item, i) => (
                       <div key={i} className="flex items-center gap-2 fade-in">
                         <span className={`font-mono text-[9px] min-w-[60px] ${(item.action === "click" || item.action === "cart") ? "text-emerald-600 dark:text-emerald-400" : "text-red-500 dark:text-red-400"}`}>
-                          {(item.action === "click" || item.action === "cart") ? "▲ +reward" : "▼ −reward"}
+                          {(item.action === "click" || item.action === "cart") ? "▲ trained" : "▼ skipped"}
                         </span>
                         <span className="flex-1 truncate font-mono text-[9px] text-[#babbbd] dark:text-[#627d9a]">{item.title}</span>
                       </div>
@@ -630,12 +630,12 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* DQN Loss */}
+                {/* SASRec Loss */}
                 <div className={`p-3 ${CARD}`}>
                   <div className="flex items-center justify-between mb-2">
                     <div>
-                      <p className="text-[10px] font-semibold tracking-widest uppercase text-[#babbbd] dark:text-[#627d9a]">DQN Loss</p>
-                      <p className="font-mono text-[9px] text-[#babbbd] dark:text-[#627d9a] mt-0.5">{rlMetrics.buffer_size}/2000 transitions</p>
+                      <p className="text-[10px] font-semibold tracking-widest uppercase text-[#babbbd] dark:text-[#627d9a]">SASRec Loss</p>
+                      <p className="font-mono text-[9px] text-[#babbbd] dark:text-[#627d9a] mt-0.5">{rlMetrics.step} online steps</p>
                     </div>
                     <span className="font-mono font-semibold text-[#2e3257] dark:text-[#dfc5a4]" style={{ fontSize: 13 }}>
                       {rlMetrics.loss_history.length > 0 ? rlMetrics.loss_history.at(-1).toFixed(4) : "0.0000"}
@@ -653,7 +653,7 @@ export default function App() {
                     </div>
                   ) : (
                     <div className={`h-14 flex items-center justify-center rounded-lg border ${DIVIDER}`}>
-                      <span className="text-[9px] text-[#babbbd] dark:text-[#627d9a]">Interact to stream loss data</span>
+                      <span className="text-[9px] text-[#babbbd] dark:text-[#627d9a]">Interact to see loss converge</span>
                     </div>
                   )}
                 </div>
@@ -669,7 +669,7 @@ export default function App() {
               {interactions.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-40 gap-3 text-center">
                   <p className="text-[11px] text-[#babbbd] dark:text-[#627d9a]">
-                    Interact with search results or<br />recommendations to train the DQN
+                    Interact with search results or<br />recommendations to train DIF-SASRec
                   </p>
                   <p className="text-[9px] text-[#babbbd]/70 dark:text-[#627d9a]/60 mt-1">Profile fingerprint updates in real-time</p>
                 </div>

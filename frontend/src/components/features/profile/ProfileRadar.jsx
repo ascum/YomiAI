@@ -6,7 +6,7 @@ export function ProfileRadar({ interactions }) {
   const bars = [
     { label: "CTR",       value: ctr },
     { label: "Depth",     value: Math.min(total / 20, 1) },
-    { label: "RL Fit",    value: Math.min(clicks / 10, 1) * 0.8 + 0.1 },
+    { label: "Model Fit", value: Math.min(clicks / 10, 1) * 0.8 + 0.1 },
     { label: "Diversity", value: new Set(interactions.map(i => i.id)).size / Math.max(total, 1) },
   ];
 

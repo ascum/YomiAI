@@ -143,3 +143,44 @@ class Retriever:
                 self.clip_index.reconstruct(idx),
             )
         return None
+
+    def get_content_candidates(self, query_vector, top_n: int = 200,
+                                exclude_asins: set = None) -> list:
+        """
+        Personal Pipeline candidate generation via HNSW KNN search.
+
+        Uses self.text_index (HNSW when bge_index_hnsw.faiss is present) to find
+        nearest neighbours to the query vector. COMPLETELY INDEPENDENT of Cleora.
+
+        Used by the DIF-SASRec personal pipeline ("You Might Like") tab.
+        The query_vector is typically the user's text_profile — a 1024-dim
+        weighted average of their clicked items' BGE-M3 embeddings.
+
+        Args:
+            query_vector:  np.ndarray [1024] — user's BGE-M3 profile vector
+            top_n:         number of candidates to return
+            exclude_asins: set of ASINs to exclude (already-seen items)
+        Returns:
+            list of ASIN strings ordered by cosine similarity (best first)
+        """
+        if exclude_asins is None:
+            exclude_asins = set()
+
+        q = query_vector.reshape(1, -1).astype("float32")
+
+        # Over-fetch to compensate for excluded items
+        fetch_n = top_n + len(exclude_asins) + 50
+        D, I = self.text_index.search(q, fetch_n)
+
+        results = []
+        for faiss_i in I[0]:
+            if faiss_i < 0 or faiss_i >= len(self.asins):
+                continue
+            asin = self.asins[faiss_i]
+            if asin in exclude_asins:
+                continue
+            results.append(asin)
+            if len(results) >= top_n:
+                break
+
+        return results

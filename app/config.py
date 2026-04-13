@@ -85,5 +85,21 @@ class Settings:
     BM25_HIGH_CONF: float = 0.6
     BM25_VISUAL_BOOST: float = 0.5
 
+    # ── DIF-SASRec (Personal Pipeline — "You Might Like") ────────────────────
+    # Replaces GRU-SeqDQN for the personal "You Might Like" tab.
+    # Uses decoupled category attention to model individual user taste evolution.
+    # Candidates come from HNSW BGE-M3 index — zero Cleora dependency.
+    SASREC_HIDDEN_DIM:     int   = 512    # model internal dimension (projects 1024→512)
+    SASREC_N_BLOCKS:       int   = 4      # DIF-attention transformer layers
+    SASREC_N_HEADS:        int   = 8      # attention heads (head_dim = 512/8 = 64)
+    SASREC_DROPOUT:        float = 0.2    # dropout in attention and FFN
+    SASREC_LR:             float = 1e-3   # peak learning rate (cosine schedule)
+    SASREC_WEIGHT_DECAY:   float = 0.01   # AdamW weight decay
+    SASREC_WARMUP_EPOCHS:  int   = 2      # linear LR warmup before cosine decay
+    SASREC_ALPHA_INIT:     float = 0.7    # initial content vs category attention balance
+    SASREC_CAT_AUX_WEIGHT: float = 0.1   # category prediction auxiliary loss weight
+    SASREC_NUM_NEGATIVES:  int   = 512    # sampled softmax negatives per step
+    PERSONAL_CANDIDATES:   int   = 200    # HNSW KNN retrieval count (no Cleora)
+
 
 settings = Settings()
