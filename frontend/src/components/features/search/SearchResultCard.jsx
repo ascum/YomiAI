@@ -56,10 +56,19 @@ export function SearchResultCard({ book, onInteract, onAskAIStream }) {
               {book.title}
             </p>
             <p className="text-[#627d9a] dark:text-[#babbbd] mt-0.5" style={{ fontSize: 11 }}>{author}</p>
-            <span className="inline-block mt-1 px-2 py-0.5 rounded-full text-[9px]
-                             bg-[#dfc5a4]/25 text-[#627d9a] dark:text-[#babbbd]">
-              {genre}
-            </span>
+            <div className="flex flex-wrap gap-1 mt-1">
+              <span className="px-2 py-0.5 rounded-full text-[9px]
+                               bg-[#dfc5a4]/25 text-[#627d9a] dark:text-[#babbbd]">
+                {genre}
+              </span>
+              {book.sub_genre && book.sub_genre !== genre && (
+                <span className="px-2 py-0.5 rounded-full text-[9px]
+                                 bg-[#babbbd]/15 dark:bg-[#627d9a]/15
+                                 text-[#babbbd] dark:text-[#627d9a]">
+                  {book.sub_genre}
+                </span>
+              )}
+            </div>
           </div>
           <div className="flex gap-2 flex-shrink-0">
             <ScoreBadge score={book.score} label="Match" />

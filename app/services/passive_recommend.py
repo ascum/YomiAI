@@ -6,14 +6,15 @@ Pipeline B — "You Might Like"   : BGE-M3 HNSW KNN   → Content veto → DIF-S
 
 Pipeline B has ZERO dependency on Cleora. If Cleora is unavailable, Pipeline A
 returns an empty list while Pipeline B continues to work via HNSW retrieval.
-"""
-import os
 
+Agent ownership: this engine no longer owns a DIFSASRecAgent. Routes borrow an
+agent from AgentPool, call agent.load_user() to load per-user weights, then pass
+the agent into the engine methods. This gives true per-request isolation.
+"""
 import faiss
 import numpy as np
 
 from app.config import settings
-from app.services.dif_sasrec import DIFSASRecAgent
 
 TOP_K                 = settings.TOP_K
 COLD_START_THRESHOLD  = settings.COLD_START_THRESHOLD
@@ -29,6 +30,9 @@ class PassiveRecommendationEngine:
 
     Tab 1 "People Also Buy"  — Cleora collaborative filtering (unchanged).
     Tab 2 "You Might Like"   — DIF-SASRec sequential model, zero Cleora dependency.
+
+    Routes supply a DIFSASRecAgent (borrowed from AgentPool) to every method
+    that needs one. The engine itself holds no model state.
     """
 
     def __init__(self, retriever, profile_manager, category_encoder=None):
@@ -36,33 +40,9 @@ class PassiveRecommendationEngine:
         self.profile_manager  = profile_manager
         self.category_encoder = category_encoder
 
-        # Load global pretrained checkpoint if it exists — new users start from
-        # this warm prior instead of random weights
-        pretrained_path = os.path.join(settings.DATA_DIR, "dif_sasrec_pretrained.pt")
-        self.sasrec = DIFSASRecAgent(
-            retriever, category_encoder,
-            pretrained_path=pretrained_path if os.path.exists(pretrained_path) else None,
-        )
-
-    # ── Per-user DIF-SASRec weight persistence ────────────────────────────────
-
-    def _sasrec_path(self, data_dir: str, user_id: str) -> str:
-        profiles_dir = os.path.join(data_dir, "profiles")
-        os.makedirs(profiles_dir, exist_ok=True)
-        safe_id = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in user_id)
-        return os.path.join(profiles_dir, f"{safe_id}_dif_sasrec.pt")
-
-    def save_personal_weights(self, user_id: str, data_dir: str):
-        self.sasrec.save(self._sasrec_path(data_dir, user_id))
-
-    def load_personal_weights(self, user_id: str, data_dir: str):
-        path = self._sasrec_path(data_dir, user_id)
-        if os.path.exists(path):
-            self.sasrec.load(path)
-
     # ── Main recommendation entry point ───────────────────────────────────────
 
-    async def recommend_for_user(self, user_id: str, top_k: int = TOP_K):
+    async def recommend_for_user(self, user_id: str, agent, top_k: int = TOP_K):
         """
         Generate personalised recommendations split into two pools.
 
@@ -95,7 +75,7 @@ class PassiveRecommendationEngine:
             people_also_buy = []
 
         # ── Pipeline B: You Might Like (DIF-SASRec, zero Cleora) ─────────────
-        you_might_like = await self._personal_recommend(profile, user_id, top_k)
+        you_might_like = await self._personal_recommend(profile, user_id, agent, top_k)
 
         if not people_also_buy and not you_might_like:
             return None
@@ -104,7 +84,7 @@ class PassiveRecommendationEngine:
 
     # ── Pipeline B implementation ─────────────────────────────────────────────
 
-    async def _personal_recommend(self, profile, user_id: str, top_k: int) -> list:
+    async def _personal_recommend(self, profile, user_id: str, agent, top_k: int) -> list:
         """
         DIF-SASRec intent → HNSW KNN → content veto → DIF-SASRec scoring.
 
@@ -138,7 +118,7 @@ class PassiveRecommendationEngine:
             user_id
         )
         candidate_asins = [item["asin"] for item in verified]
-        scores = self.sasrec.get_candidate_scores(asins, cat_ids, candidate_asins)
+        scores = agent.get_candidate_scores(asins, cat_ids, candidate_asins)
 
         ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
         return [
@@ -202,7 +182,7 @@ class PassiveRecommendationEngine:
 
     # ── DIF-SASRec online training hook ──────────────────────────────────────
 
-    def train_personal(self, user_id: str, item_asin: str,
+    def train_personal(self, user_id: str, item_asin: str, agent,
                        click_seq_before: list = None) -> float | None:
         """Train the DIF-SASRec model on the latest click event."""
         if not click_seq_before:
@@ -210,7 +190,7 @@ class PassiveRecommendationEngine:
         cat_id = (self.category_encoder.get_category_id(item_asin)
                   if self.category_encoder else 1)
         all_asins = list(self.retriever.asin_to_idx.keys())
-        return self.sasrec.train_step(
+        return agent.train_step(
             click_seq_before,
             item_asin,
             cat_id,
@@ -219,10 +199,11 @@ class PassiveRecommendationEngine:
 
     # ── RRF fusion (preserved for future use) ─────────────────────────────────
 
-    async def rrf_fusion(self, verified_candidates: list, user_id: str, k: int = RRF_K):
+    async def rrf_fusion(self, verified_candidates: list, user_id: str, agent,
+                         k: int = RRF_K):
         candidate_asins = [item["asin"] for item in verified_candidates]
         asins, cat_ids  = await self.profile_manager.get_click_sequence_with_categories(user_id)
-        sasrec_scores   = self.sasrec.get_candidate_scores(asins, cat_ids, candidate_asins)
+        sasrec_scores   = agent.get_candidate_scores(asins, cat_ids, candidate_asins)
 
         text_ranked   = sorted(verified_candidates, key=lambda x: x["text_score"],   reverse=True)
         visual_ranked = sorted(verified_candidates, key=lambda x: x["visual_score"], reverse=True)

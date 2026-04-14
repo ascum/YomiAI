@@ -59,7 +59,23 @@ export function RecommendCard({ book, onInteract, onAskAIStream, rank }) {
         </p>
         <p className="text-[#627d9a] dark:text-[#babbbd] mt-0.5" style={{ fontSize: 10 }}>{author}</p>
 
-        <div className="flex items-center gap-2 mt-1.5">
+        <div className="flex items-center flex-wrap gap-1.5 mt-1.5">
+          {book.genre && (
+            <span className="px-2 py-0.5 rounded-full text-[9px]
+                             bg-[#dfc5a4]/25 text-[#627d9a] dark:text-[#babbbd]">
+              {book.genre}
+            </span>
+          )}
+          {book.sub_genre && book.sub_genre !== book.genre && (
+            <span className="px-2 py-0.5 rounded-full text-[9px]
+                             bg-[#babbbd]/15 dark:bg-[#627d9a]/15
+                             text-[#babbbd] dark:text-[#627d9a]">
+              {book.sub_genre}
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 mt-1">
           {book.layer && <LayerTag label={book.layer} />}
           <span className="font-mono text-[#babbbd] dark:text-[#627d9a]" style={{ fontSize: 9 }}>
             match: {match}%

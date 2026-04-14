@@ -28,8 +28,9 @@ async def recommend(user_id: str, container: AppContainer = Depends(require_read
     if len(profile.clicks) < COLD_START_THRESHOLD:
         rec_dict, mode = _cold_start(retriever)
     else:
-        recommend_engine.load_personal_weights(user_id, settings.DATA_DIR)
-        res = await recommend_engine.recommend_for_user(user_id, top_k=5)
+        async with container.agent_pool.borrow() as agent:
+            agent.load_user(user_id, settings.DATA_DIR)
+            res = await recommend_engine.recommend_for_user(user_id, agent, top_k=5)
         if res is None:
             rec_dict, mode = _cold_start(retriever)
         else:
@@ -75,13 +76,11 @@ def _cold_start(retriever):
 @router.get("/rl_metrics")
 async def rl_metrics(user_id: str, container: AppContainer = Depends(require_ready)):
     """Return real-time DIF-SASRec model metrics."""
-    recommend_engine = container.recommend_engine
-    recommend_engine.load_personal_weights(user_id, settings.DATA_DIR)
-    agent = recommend_engine.sasrec
-
-    return {
-        "user_id":      user_id,
-        "loss_history": agent.loss_history,
-        "step":         agent._step,
-        "arch":         "DIF-SASRec",
-    }
+    async with container.agent_pool.borrow() as agent:
+        agent.load_user(user_id, settings.DATA_DIR)
+        return {
+            "user_id":      user_id,
+            "loss_history": list(agent.loss_history),
+            "step":         agent._step,
+            "arch":         "DIF-SASRec",
+        }

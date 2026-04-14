@@ -61,10 +61,12 @@ async def interact(req: InteractRequest,
     # ── Train the DIF-SASRec personal model ──────────────────────────────────
     loss = None
     if click_seq_before and req.action in ("click", "cart"):
-        loss = recommend_engine.train_personal(
-            req.user_id, req.item_id,
-            click_seq_before=click_seq_before,
-        )
-        recommend_engine.save_personal_weights(req.user_id, settings.DATA_DIR)
+        async with container.agent_pool.borrow() as agent:
+            agent.load_user(req.user_id, settings.DATA_DIR)
+            loss = recommend_engine.train_personal(
+                req.user_id, req.item_id, agent,
+                click_seq_before=click_seq_before,
+            )
+            agent.save_user(req.user_id, settings.DATA_DIR)
 
     return {"status": "ok", "reward": reward, "sasrec_loss": loss}

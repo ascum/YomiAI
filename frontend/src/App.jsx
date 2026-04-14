@@ -5,6 +5,7 @@ import { ProfileRadar } from "./components/features/profile/ProfileRadar";
 import { SearchResultCard } from "./components/features/search/SearchResultCard";
 import { RecommendCard } from "./components/features/recs/RecommendCard";
 import { SkeletonCard } from "./components/ui/SkeletonCard";
+import { LoginPage } from "./components/LoginPage";
 
 // ─── Mock data ────────────────────────────────────────────────────────────────
 const MOCK_BOOKS = [
@@ -27,19 +28,31 @@ const MOCK_RECS = {
 
 // ─── App ──────────────────────────────────────────────────────────────────────
 export default function App() {
+  // ── Theme (initialised first — LoginPage needs it) ──────────────────────────
+  const [isDark, setIsDark] = useState(false);
+  useEffect(() => { document.documentElement.classList.toggle("dark", isDark); }, [isDark]);
+
   // ── Session & auth ──────────────────────────────────────────────────────────
   const [sessionId] = useState(() => {
     let id = localStorage.getItem("yomiai_session_id");
     if (!id) { id = "sess_" + Math.random().toString(36).substring(2, 15); localStorage.setItem("yomiai_session_id", id); }
     return id;
   });
-  const [userId, setUserId]   = useState("user_demo_01");
-  const [isGuest, setIsGuest] = useState(false);
-  const toggleUser = () => { if (isGuest) { setUserId("user_demo_01"); setIsGuest(false); } else { setUserId(`guest_${sessionId.slice(5, 11)}`); setIsGuest(true); } };
 
-  // ── Theme ───────────────────────────────────────────────────────────────────
-  const [isDark, setIsDark] = useState(false); // light-mode default
-  useEffect(() => { document.documentElement.classList.toggle("dark", isDark); }, [isDark]);
+  // userId: read from localStorage on mount so returning users skip the gate
+  const [userId, setUserId] = useState(() => localStorage.getItem("yomiai_user_id") || null);
+  const [isGuest, setIsGuest] = useState(() => (localStorage.getItem("yomiai_user_id") || "").startsWith("guest_"));
+
+  const handleLogin = (uid) => {
+    localStorage.setItem("yomiai_user_id", uid);
+    setUserId(uid);
+    setIsGuest(uid.startsWith("guest_"));
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("yomiai_user_id");
+    setUserId(null);
+  };
 
   // ── Search ──────────────────────────────────────────────────────────────────
   const [query, setQuery]               = useState("");
@@ -201,6 +214,12 @@ export default function App() {
   const DIVIDER = "border-[#babbbd] dark:border-[#627d9a]/60";
 
   // ─── RENDER ─────────────────────────────────────────────────────────────────
+
+  // Gate: show login screen until a userId is established
+  if (!userId) {
+    return <LoginPage onLogin={handleLogin} isDark={isDark} onToggleDark={() => setIsDark(d => !d)} />;
+  }
+
   return (
     <div className="h-screen flex flex-col font-sans bg-[#fffef7] dark:bg-[#2e3257] text-[#2e3257] dark:text-[#fffef7] overflow-hidden transition-colors duration-300">
 
@@ -238,18 +257,26 @@ export default function App() {
           {/* Controls */}
           <div className="flex items-center gap-4">
 
-            {/* Demo / Guest */}
-            <button
-              onClick={toggleUser}
-              className={`px-3 py-1.5 rounded-lg text-[12px] font-semibold flex items-center gap-1.5 border transition-all duration-200
-                hover:bg-[#dfc5a4]/30 hover:border-[#dfc5a4]
+            {/* Logged-in user badge + logout */}
+            <div className="flex items-center gap-2">
+              <span className={`px-3 py-1.5 rounded-lg text-[12px] font-semibold flex items-center gap-1.5 border
                 ${isGuest
                   ? "bg-[#627d9a]/10 border-[#627d9a]/30 text-[#627d9a] dark:text-[#babbbd]"
                   : "bg-[#2e3257]/8 dark:bg-[#fffef7]/8 border-[#2e3257]/20 dark:border-[#fffef7]/20 text-[#2e3257] dark:text-[#fffef7]"}`}
-            >
-              <span style={{ fontSize: 14 }}>{isGuest ? "👤" : "👨‍💻"}</span>
-              {isGuest ? "Guest Mode" : "Demo User"}
-            </button>
+              >
+                <span style={{ fontSize: 14 }}>{isGuest ? "👤" : "🔖"}</span>
+                {userId}
+              </span>
+              <button
+                onClick={handleLogout}
+                className="px-2 py-1.5 rounded-lg text-[11px] border border-[#babbbd]/50 dark:border-[#627d9a]/40
+                           text-[#babbbd] dark:text-[#627d9a]
+                           hover:border-rose-300 hover:text-rose-400 transition-all duration-200"
+                title="Sign out"
+              >
+                ⎋
+              </button>
+            </div>
 
             <div className={`w-px h-6 ${DIVIDER} border-l`} />
 
