@@ -65,7 +65,9 @@
   .fade-in    { animation: fadeSlideIn 0.25s ease forwards; }
   .shimmer    { animation: shimmer 1.5s ease infinite; }
   .live-dot   { animation: livePulse 2s ease infinite; }
-  .badge-exit { animation: badgeExit 0.45s cubic-bezier(0.4, 0, 0.2, 1) forwards; }
+  .badge-exit      { animation: badgeExit 0.45s cubic-bezier(0.4, 0, 0.2, 1) forwards; }
+  .engagement-bar  { background: linear-gradient(to right, #2e3257, #627d9a); }
+  .dark .engagement-bar { background: linear-gradient(to right, #627d9a, #dfc5a4); }
   .scrollbar-hide { scrollbar-width: none; }
   .scrollbar-hide::-webkit-scrollbar { display: none; }
 }

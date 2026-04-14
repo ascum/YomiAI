@@ -387,7 +387,7 @@ export default function App() {
                   <div className={`font-mono font-semibold tabular-nums ${s.hi ? "text-[#2e3257] dark:text-[#fffef7]" : "text-[#babbbd] dark:text-[#627d9a]"}`} style={{ fontSize: 15 }}>
                     {s.value}
                   </div>
-                  <div className="font-mono tracking-widest uppercase text-[#babbbd] dark:text-[#627d9a]" style={{ fontSize: 8 }}>
+                  <div className="font-mono tracking-widest uppercase text-[#627d9a] dark:text-[#babbbd]" style={{ fontSize: 8 }}>
                     {s.label}
                   </div>
                 </div>
@@ -404,7 +404,7 @@ export default function App() {
           if (!items?.length) return null;
           return (
             <div className={`flex items-center gap-4 px-6 py-2 overflow-x-auto border-t ${DIVIDER} bg-[#babbbd]/10 dark:bg-[#fffef7]/3`}>
-              <span className="font-mono tracking-widest uppercase text-[#babbbd] dark:text-[#627d9a] whitespace-nowrap font-bold flex-shrink-0" style={{ fontSize: 9 }}>
+              <span className="font-mono tracking-widest uppercase text-[#627d9a] dark:text-[#babbbd] whitespace-nowrap font-bold flex-shrink-0" style={{ fontSize: 9 }}>
                 Recently Viewed
               </span>
               {items.map((item, i) => (
@@ -753,14 +753,14 @@ export default function App() {
 
                 {/* Radar — full width */}
                 <div className={`col-span-2 p-4 ${CARD}`}>
-                  <p className="text-[10px] font-semibold tracking-widest uppercase text-[#babbbd] dark:text-[#627d9a] mb-3">Engagement Signals</p>
+                  <p className="text-[10px] font-semibold tracking-widest uppercase text-[#627d9a] dark:text-[#babbbd] mb-4">Engagement Signals</p>
                   <ProfileRadar interactions={interactions} />
                 </div>
 
                 {/* SASRec Training Feed */}
                 <div className={`p-3 ${CARD}`}>
                   <div className="flex items-center justify-between mb-2">
-                    <p className="text-[10px] font-semibold tracking-widest uppercase text-[#babbbd] dark:text-[#627d9a]">Train Feed</p>
+                    <p className="text-[10px] font-semibold tracking-widest uppercase text-[#627d9a] dark:text-[#babbbd]">Train Feed</p>
                     <div className="flex items-center gap-1.5">
                       <div className={`w-1.5 h-1.5 rounded-full ${rlStep > 0 ? "bg-emerald-500 live-dot" : "bg-[#babbbd] dark:bg-[#627d9a]"}`} />
                       <span className="font-mono text-[#babbbd] dark:text-[#627d9a]" style={{ fontSize: 9 }}>{rlStep} steps</span>
@@ -787,7 +787,7 @@ export default function App() {
                     <div>
                       {/* C: InfoTooltip explaining the pretraining→online drop */}
                       <div className="flex items-center">
-                        <p className="text-[10px] font-semibold tracking-widest uppercase text-[#babbbd] dark:text-[#627d9a]">SASRec Loss</p>
+                        <p className="text-[10px] font-semibold tracking-widest uppercase text-[#627d9a] dark:text-[#babbbd]">SASRec Loss</p>
                         <InfoTooltip
                           tip="The sharp drop from ~5.3 to ~0.5 is expected, not instability. Pretraining uses 512 hard negatives; online training uses random negatives from 3M+ books (much easier). The pretrained model already ranks similar items well."
                           formula="Pretrain loss ≠ Online loss scale"
@@ -808,43 +808,82 @@ export default function App() {
                     </div>
                   </div>
                   {sparklinePoints ? (() => {
-                    const total = rlMetrics.loss_history.length;
+                    const h     = rlMetrics.loss_history;
+                    const total = h.length;
                     const vbW   = Math.max(1, total - 1);
-                    // C: phase split position as fraction of viewBox width
+                    const minV  = Math.min(...h), maxV = Math.max(...h);
                     const splitX = onlineStartIdx != null && onlineStartIdx > 0 && onlineStartIdx < total
                       ? onlineStartIdx - 0.5
                       : null;
                     return (
-                      <div className="w-full relative" style={{ height: 56, borderBottom: "1px solid #babbbd55" }}>
-                        <svg className="absolute inset-0 w-full h-full overflow-visible" preserveAspectRatio="none"
+                      <div className="w-full relative mt-1" style={{ height: 88 }}>
+                        <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none"
                           viewBox={`0 0 ${vbW} 1`}>
+                          <defs>
+                            <linearGradient id="lossAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%"   stopColor="#627d9a" stopOpacity="0.28" />
+                              <stop offset="100%" stopColor="#627d9a" stopOpacity="0.02" />
+                            </linearGradient>
+                          </defs>
+
+                          {/* subtle horizontal grid at 25 / 50 / 75 % */}
+                          {[0.25, 0.5, 0.75].map(y => (
+                            <line key={y} x1={0} y1={y} x2={vbW} y2={y}
+                              stroke="#627d9a" strokeOpacity="0.15" strokeWidth="0.5"
+                              vectorEffect="non-scaling-stroke" />
+                          ))}
+
+                          {/* area fill */}
+                          <polygon
+                            fill="url(#lossAreaGrad)"
+                            points={`0,1 ${sparklinePoints} ${vbW},1`}
+                          />
+
+                          {/* main line */}
                           <polyline
-                            fill="none" stroke="#627d9a" strokeWidth="0.05" vectorEffect="non-scaling-stroke"
+                            fill="none" stroke="#627d9a" strokeWidth="1.5"
+                            strokeLinejoin="round" strokeLinecap="round"
+                            vectorEffect="non-scaling-stroke"
                             points={sparklinePoints}
                           />
-                          {/* C: phase divider */}
+
+                          {/* phase divider */}
                           {splitX != null && (
                             <line
                               x1={splitX} y1={0} x2={splitX} y2={1}
-                              stroke="#dfc5a4" strokeWidth="0.04"
-                              strokeDasharray="0.08 0.06"
+                              stroke="#dfc5a4" strokeWidth="1.5"
+                              strokeDasharray="4 3"
                               vectorEffect="non-scaling-stroke"
                             />
                           )}
                         </svg>
-                        {/* C: phase labels */}
+
+                        {/* Y-axis labels */}
+                        <span className="absolute right-0 font-mono text-[8px] text-[#babbbd] dark:text-[#627d9a]"
+                              style={{ top: 0, lineHeight: 1 }}>
+                          {maxV.toFixed(2)}
+                        </span>
+                        <span className="absolute right-0 font-mono text-[8px] text-[#babbbd] dark:text-[#627d9a]"
+                              style={{ bottom: 2, lineHeight: 1 }}>
+                          {minV.toFixed(2)}
+                        </span>
+
+                        {/* phase labels */}
                         {splitX != null && (
                           <>
-                            <span className="absolute top-0 font-mono text-[8px] text-[#babbbd] dark:text-[#627d9a]"
-                                  style={{ left: `${Math.max(0, (splitX / vbW) * 100 - 20)}%`, opacity: 0.7 }}>
+                            <span className="absolute font-mono text-[8px] text-[#babbbd] dark:text-[#627d9a]"
+                                  style={{ top: 2, left: `${Math.max(0, (splitX / vbW) * 100 - 18)}%` }}>
                               Pretrain
                             </span>
-                            <span className="absolute top-0 font-mono text-[8px] text-[#dfc5a4]"
-                                  style={{ left: `${Math.min(95, (splitX / vbW) * 100 + 2)}%`, opacity: 0.9 }}>
+                            <span className="absolute font-mono text-[8px] text-[#dfc5a4]"
+                                  style={{ top: 2, left: `${Math.min(88, (splitX / vbW) * 100 + 2)}%` }}>
                               Online
                             </span>
                           </>
                         )}
+
+                        {/* bottom axis line */}
+                        <div className="absolute bottom-0 left-0 right-0 border-b border-[#babbbd]/35 dark:border-[#627d9a]/30" />
                       </div>
                     );
                   })() : (
@@ -859,7 +898,7 @@ export default function App() {
           ) : (
             /* ── History tab ── */
             <div className="flex-1 overflow-y-auto px-5 py-4">
-              <h3 className="text-[11px] font-extrabold tracking-widest uppercase text-[#babbbd] dark:text-[#627d9a] mb-3">
+              <h3 className="text-[11px] font-extrabold tracking-widest uppercase text-[#627d9a] dark:text-[#babbbd] mb-3">
                 Interaction History
               </h3>
               {interactions.length === 0 ? (

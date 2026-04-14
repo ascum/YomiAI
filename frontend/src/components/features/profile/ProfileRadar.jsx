@@ -35,27 +35,41 @@ export function ProfileRadar({ interactions }) {
   const ctx = { total, clicks, uniqueIds };
 
   return (
-    <div className="space-y-2.5">
-      {BAR_META.map(b => (
-        <div key={b.label} className="flex items-center gap-3">
-          <span
-            className="font-mono text-[#babbbd] dark:text-[#627d9a] flex items-center"
-            style={{ fontSize: 10, width: 64, justifyContent: "flex-end" }}
-          >
-            {b.label}
-            <InfoTooltip tip={b.tip} formula={b.formula} />
-          </span>
-          <div className="flex-1 h-1.5 rounded-full bg-[#babbbd]/30 dark:bg-[#627d9a]/25">
-            <div
-              className="h-1.5 rounded-full bg-[#2e3257] dark:bg-[#dfc5a4] transition-all duration-700"
-              style={{ width: `${b.value(ctx) * 100}%` }}
-            />
+    <div className="space-y-3.5">
+      {BAR_META.map(b => {
+        const pct = b.value(ctx) * 100;
+        return (
+          <div key={b.label}>
+            {/* Label row */}
+            <div className="flex items-center justify-between mb-1">
+              <span className="font-mono text-[#627d9a] dark:text-[#babbbd] flex items-center gap-0.5" style={{ fontSize: 10 }}>
+                {b.label}
+                <InfoTooltip tip={b.tip} formula={b.formula} />
+              </span>
+              <span className="font-mono font-semibold text-[#2e3257] dark:text-[#fffef7]/80 tabular-nums" style={{ fontSize: 10 }}>
+                {Math.round(pct)}%
+              </span>
+            </div>
+
+            {/* Bar track */}
+            <div className="relative h-1.5 rounded-full overflow-hidden bg-[#babbbd]/40 dark:bg-[#627d9a]/25">
+              {/* Subtle grid lines at 25/50/75% */}
+              {[25, 50, 75].map(mark => (
+                <div
+                  key={mark}
+                  className="absolute top-0 bottom-0 w-px bg-white/40 dark:bg-[#1a1b2e]/40"
+                  style={{ left: `${mark}%` }}
+                />
+              ))}
+              {/* Filled bar with gradient */}
+              <div
+                className="engagement-bar h-full rounded-full transition-all duration-700 ease-out"
+                style={{ width: `${pct}%` }}
+              />
+            </div>
           </div>
-          <span className="font-mono text-[#babbbd] dark:text-[#627d9a] w-8" style={{ fontSize: 10 }}>
-            {Math.round(b.value(ctx) * 100)}%
-          </span>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
