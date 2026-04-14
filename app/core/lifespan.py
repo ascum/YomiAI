@@ -21,6 +21,7 @@ from app.repository.faiss_repo import Retriever
 from app.repository.metadata_repo import MetadataRepository
 from app.repository.profile_repo import UserProfileManager
 from app.services.active_search import ActiveSearchEngine
+from app.services.agent_pool import AgentPool, AGENT_POOL_SIZE
 from app.services.passive_recommend import PassiveRecommendationEngine
 
 log = logging.getLogger("nba_api")
@@ -94,6 +95,18 @@ async def lifespan(app):
     )
     container.profile_manager  = profile_manager
     container.recommend_engine = recommend_engine
+
+    # 3c. DIF-SASRec agent pool (8 isolated agents for concurrent requests)
+    pretrained_path = os.path.join(settings.DATA_DIR, "dif_sasrec_pretrained.pt")
+    agent_pool = AgentPool(
+        n=AGENT_POOL_SIZE,
+        retriever=retriever,
+        category_encoder=cat_encoder,
+        pretrained_path=pretrained_path if os.path.exists(pretrained_path) else None,
+    )
+    log.info(f"Warming up DIF-SASRec agent pool ({AGENT_POOL_SIZE} agents)…")
+    await agent_pool.warmup()
+    container.agent_pool = agent_pool
 
     # 4. Text encoder (BGE-M3)
     log.info(f"Loading text encoder ({settings.TEXT_ENCODER_MODEL})…")

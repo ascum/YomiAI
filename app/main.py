@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.lifespan import lifespan
-from app.api.routes import health, search, recommend, interact, profile, llm
+from app.api.routes import health, search, recommend, interact, profile, llm, auth
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(message)s")
 
@@ -27,6 +27,7 @@ app.add_middleware(
 )
 
 app.include_router(health.router)
+app.include_router(auth.router)
 app.include_router(search.router)
 app.include_router(recommend.router)
 app.include_router(interact.router)

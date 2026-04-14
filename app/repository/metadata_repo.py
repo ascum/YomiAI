@@ -62,14 +62,21 @@ class MetadataRepository:
             title_val = row.get("title")
             title = str(title_val) if title_val and str(title_val) != "nan" else f"Book {asin[:8]}"
 
-            # EXTRACT RICH GENRE: Use the last part of the categories path
+            # EXTRACT GENRE: Use the middle segment of the categories path
+            # "Books|Mystery, Thriller & Suspense|Thrillers & Suspense"
+            #   → main_genre: "Mystery, Thriller & Suspense"
+            #   → sub_genre:  "Thrillers & Suspense"
             raw_cats = row.get("categories")
             if raw_cats and str(raw_cats) != "nan":
-                # "Books|Literature & Fiction|History" -> "History"
-                genre = str(raw_cats).split("|")[-1].strip()
+                parts = [p.strip() for p in str(raw_cats).split("|")]
+                # parts[0] is always "Books" — skip it
+                main_genre = parts[1] if len(parts) > 1 else parts[0]
+                sub_genre  = parts[-1] if len(parts) > 2 else ""
+                genre = main_genre
             else:
                 genre_val = row.get("main_category")
-                genre = str(genre_val) if genre_val and str(genre_val) != "nan" else "Books"
+                genre     = str(genre_val) if genre_val and str(genre_val) != "nan" else "Books"
+                sub_genre = ""
 
             img_val = row.get("image_url")
             image_url = str(img_val) if img_val and str(img_val) != "nan" else None
@@ -79,6 +86,7 @@ class MetadataRepository:
                 "title":       title,
                 "author":      clean_author,
                 "genre":       genre,
+                "sub_genre":   sub_genre,
                 "image_url":   image_url,
                 "description": description,
                 "cover_color": "#" + hex(abs(hash(asin)) % 0xFFFFFF)[2:].zfill(6),
@@ -89,6 +97,7 @@ class MetadataRepository:
             "title":       f"Book {asin[:8]}",
             "author":      "Unknown Author",
             "genre":       "Books",
+            "sub_genre":   "",
             "image_url":   None,
             "cover_color": "#" + hex(abs(hash(asin)) % 0xFFFFFF)[2:].zfill(6),
         }

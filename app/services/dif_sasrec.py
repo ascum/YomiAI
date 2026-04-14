@@ -17,6 +17,7 @@ Usage:
     scores = agent.get_candidate_scores(click_asins, cat_ids, candidate_asins)
     loss   = agent.train_step(click_asins, target_asin, target_cat_id, all_asins)
 """
+import copy
 import os
 
 import numpy as np
@@ -319,6 +320,42 @@ class DIFSASRecAgent:
             print(f"[DIFSASRecAgent] Initialized fresh model — "
                   f"{param_count:,} params  device={self.device}  "
                   f"num_cats={num_cats}")
+
+        # Snapshot pretrained baseline in CPU RAM so pool agents can reset
+        # to a clean state when serving a new user who has no personal checkpoint.
+        self._pretrained_state       = copy.deepcopy(self.model.state_dict())
+        self._pretrained_opt_state   = copy.deepcopy(self.optimizer.state_dict())
+        self._pretrained_step        = self._step
+        self._pretrained_loss_history = list(self.loss_history)
+
+    # ── Per-user weight helpers (used by AgentPool routes) ────────────────────
+
+    @staticmethod
+    def _user_path(data_dir: str, user_id: str) -> str:
+        profiles_dir = os.path.join(data_dir, "profiles")
+        os.makedirs(profiles_dir, exist_ok=True)
+        safe_id = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in user_id)
+        return os.path.join(profiles_dir, f"{safe_id}_dif_sasrec.pt")
+
+    def load_user(self, user_id: str, data_dir: str):
+        """Load per-user weights, or reset to pretrained baseline for new users.
+
+        Calling this before every request prevents stale weights from a
+        previous user contaminating the current request (dirty-agent problem).
+        """
+        path = self._user_path(data_dir, user_id)
+        if os.path.exists(path):
+            self.load(path)
+        else:
+            self.model.load_state_dict(self._pretrained_state)
+            self.optimizer.load_state_dict(self._pretrained_opt_state)
+            self._step        = self._pretrained_step
+            self.loss_history = list(self._pretrained_loss_history)
+            self.model.eval()
+
+    def save_user(self, user_id: str, data_dir: str):
+        """Persist this agent's current weights as the user's personal checkpoint."""
+        self.save(self._user_path(data_dir, user_id))
 
     # ── Tensor building ───────────────────────────────────────────────────────
 

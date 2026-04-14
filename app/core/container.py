@@ -28,6 +28,7 @@ class AppContainer:
     # Service layer
     search_engine:    Any = None          # app.services.active_search.ActiveSearchEngine
     recommend_engine: Any = None          # app.services.passive_recommend.PassiveRecommendationEngine
+    agent_pool:       Any = None          # app.services.agent_pool.AgentPool
     category_encoder: Any = None          # app.services.category_encoder.CategoryEncoder
 
     # ML models

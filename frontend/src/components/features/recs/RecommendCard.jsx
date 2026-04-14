@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { BookCover } from "../../ui/BookCover";
 import { LayerTag } from "../../ui/LayerTag";
 
@@ -10,10 +10,25 @@ function parseAuthor(raw) {
   return raw;
 }
 
-export function RecommendCard({ book, onInteract, onAskAIStream, rank }) {
+export function RecommendCard({ book, onInteract, onAskAIStream, rank, isNew = false }) {
   const [showAI, setShowAI]     = useState(false);
   const [aiText, setAiText]     = useState("");
   const [aiLoading, setLoading] = useState(false);
+
+  // "New" badge — hold in DOM during exit animation before removing
+  const [badgeVisible, setBadgeVisible] = useState(isNew);
+  const [badgeExiting, setBadgeExiting] = useState(false);
+  const prevIsNew = useRef(isNew);
+
+  useEffect(() => {
+    if (isNew && !prevIsNew.current) {
+      setBadgeVisible(true);
+      setBadgeExiting(false);
+    } else if (!isNew && prevIsNew.current && badgeVisible) {
+      setBadgeExiting(true);          // trigger exit animation
+    }
+    prevIsNew.current = isNew;
+  }, [isNew]);
 
   const handleAI = async (e) => {
     e.stopPropagation();
@@ -51,6 +66,18 @@ export function RecommendCard({ book, onInteract, onAskAIStream, rank }) {
           #{rank + 1}
         </span>
         <BookCover color={cover} title={book.title} size="sm" imageUrl={book.image_url} />
+        {badgeVisible && (
+          <span
+            className={`px-1.5 py-0.5 rounded-full font-mono font-bold
+                        bg-[#dfc5a4]/30 border border-[#dfc5a4]
+                        text-[#2e3257] dark:text-[#dfc5a4]
+                        ${badgeExiting ? "badge-exit" : "fade-in"}`}
+            style={{ fontSize: 8 }}
+            onAnimationEnd={() => { if (badgeExiting) setBadgeVisible(false); }}
+          >
+            New
+          </span>
+        )}
       </div>
 
       <div className="flex-1 min-w-0">
@@ -59,7 +86,23 @@ export function RecommendCard({ book, onInteract, onAskAIStream, rank }) {
         </p>
         <p className="text-[#627d9a] dark:text-[#babbbd] mt-0.5" style={{ fontSize: 10 }}>{author}</p>
 
-        <div className="flex items-center gap-2 mt-1.5">
+        <div className="flex items-center flex-wrap gap-1.5 mt-1.5">
+          {book.genre && (
+            <span className="px-2 py-0.5 rounded-full text-[9px]
+                             bg-[#dfc5a4]/25 text-[#627d9a] dark:text-[#babbbd]">
+              {book.genre}
+            </span>
+          )}
+          {book.sub_genre && book.sub_genre !== book.genre && (
+            <span className="px-2 py-0.5 rounded-full text-[9px]
+                             bg-[#babbbd]/15 dark:bg-[#627d9a]/15
+                             text-[#babbbd] dark:text-[#627d9a]">
+              {book.sub_genre}
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 mt-1">
           {book.layer && <LayerTag label={book.layer} />}
           <span className="font-mono text-[#babbbd] dark:text-[#627d9a]" style={{ fontSize: 9 }}>
             match: {match}%

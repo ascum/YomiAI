@@ -43,6 +43,24 @@ export const api = {
     return res.json();
   },
 
+  async authCheck(username) {
+    const res = await fetch(`${API_BASE}/auth/check`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username }),
+    });
+    return res.json();
+  },
+
+  async authCreate(username) {
+    const res = await fetch(`${API_BASE}/auth/create`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username }),
+    });
+    return res.json();
+  },
+
   async *askLLMStream(title, author, userPrompt) {
     const response = await fetch(`${API_BASE}/ask_llm_stream`, {
       method: "POST",
