@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { BookCover } from "../../ui/BookCover";
 import { LayerTag } from "../../ui/LayerTag";
 
@@ -10,10 +10,25 @@ function parseAuthor(raw) {
   return raw;
 }
 
-export function RecommendCard({ book, onInteract, onAskAIStream, rank }) {
+export function RecommendCard({ book, onInteract, onAskAIStream, rank, isNew = false }) {
   const [showAI, setShowAI]     = useState(false);
   const [aiText, setAiText]     = useState("");
   const [aiLoading, setLoading] = useState(false);
+
+  // "New" badge — hold in DOM during exit animation before removing
+  const [badgeVisible, setBadgeVisible] = useState(isNew);
+  const [badgeExiting, setBadgeExiting] = useState(false);
+  const prevIsNew = useRef(isNew);
+
+  useEffect(() => {
+    if (isNew && !prevIsNew.current) {
+      setBadgeVisible(true);
+      setBadgeExiting(false);
+    } else if (!isNew && prevIsNew.current && badgeVisible) {
+      setBadgeExiting(true);          // trigger exit animation
+    }
+    prevIsNew.current = isNew;
+  }, [isNew]);
 
   const handleAI = async (e) => {
     e.stopPropagation();
@@ -51,6 +66,18 @@ export function RecommendCard({ book, onInteract, onAskAIStream, rank }) {
           #{rank + 1}
         </span>
         <BookCover color={cover} title={book.title} size="sm" imageUrl={book.image_url} />
+        {badgeVisible && (
+          <span
+            className={`px-1.5 py-0.5 rounded-full font-mono font-bold
+                        bg-[#dfc5a4]/30 border border-[#dfc5a4]
+                        text-[#2e3257] dark:text-[#dfc5a4]
+                        ${badgeExiting ? "badge-exit" : "fade-in"}`}
+            style={{ fontSize: 8 }}
+            onAnimationEnd={() => { if (badgeExiting) setBadgeVisible(false); }}
+          >
+            New
+          </span>
+        )}
       </div>
 
       <div className="flex-1 min-w-0">

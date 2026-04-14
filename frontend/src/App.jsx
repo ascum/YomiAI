@@ -6,6 +6,7 @@ import { SearchResultCard } from "./components/features/search/SearchResultCard"
 import { RecommendCard } from "./components/features/recs/RecommendCard";
 import { SkeletonCard } from "./components/ui/SkeletonCard";
 import { LoginPage } from "./components/LoginPage";
+import { InfoTooltip } from "./components/ui/InfoTooltip";
 
 // ─── Mock data ────────────────────────────────────────────────────────────────
 const MOCK_BOOKS = [
@@ -75,6 +76,13 @@ export default function App() {
   const [rlMetrics, setRlMetrics]       = useState({ loss_history: [], step: 0, arch: "" });
   const [lastTrained, setLastTrained]   = useState(null);
   const [profileStats, setProfileStats] = useState({ recent_items: [] });
+  const [trainPulse, setTrainPulse]     = useState(null);    // D: flashing loss value after a click
+
+  // ── Rec mode + new-badge tracking ───────────────────────────────────────────
+  const [recMode, setRecMode]           = useState(null);    // A: "cold_start" | "personalized"
+  const [newRecAsins, setNewRecAsins]   = useState(new Set()); // F: ASINs new since last refresh
+  const prevRecMode  = useRef(null);
+  const prevYmlAsins = useRef(new Set());
 
   // ── UI state ────────────────────────────────────────────────────────────────
   const [toasts, setToasts]           = useState([]);
@@ -107,7 +115,29 @@ export default function App() {
         setRecommendations(MOCK_RECS);
       } else {
         const d = await api.recommend(userId, sessionId);
-        setRecommendations(d || { people_also_buy: [], you_might_like: [] });
+        const recs = d || { people_also_buy: [], you_might_like: [] };
+        setRecommendations(recs);
+
+        // A: track mode, fire toast on cold-start → personalised transition
+        const mode = d?.mode || null;
+        if (mode === "personalized" && prevRecMode.current === "cold_start") {
+          toast("DIF-SASRec is now ranking for you", "success");
+        }
+        prevRecMode.current = mode;
+        setRecMode(mode);
+
+        // F: diff you_might_like — mark ASINs that weren't in the previous refresh
+        const nextIds = (recs.you_might_like || []).map(b => b.id);
+        const prev    = prevYmlAsins.current;
+        if (prev.size > 0) {
+          const fresh = new Set(nextIds.filter(id => !prev.has(id)));
+          if (fresh.size > 0) {
+            setNewRecAsins(fresh);
+            setTimeout(() => setNewRecAsins(new Set()), 4000);
+          }
+        }
+        prevYmlAsins.current = new Set(nextIds);
+
         try { const m = await api.rlMetrics(userId); setRlMetrics(m); } catch (_) {}
       }
       setLastRecsRefresh(new Date());
@@ -152,14 +182,32 @@ export default function App() {
     else                         { toast(`✕ Skipped "${book.title}" — RL penalized`, "info"); }
     try {
       if (!useMock) {
-        await api.interact(userId, book.id, action, sessionId);
-        try { const m = await api.rlMetrics(userId); setRlMetrics(m); } catch (_) {}
+        const res  = await api.interact(userId, book.id, action, sessionId);
+        const loss = res?.sasrec_loss;
+        // D: if the backend returned a fresh loss value, push it to the sparkline
+        //    immediately and flash the training badge (skip actions don't train)
+        if (loss != null) {
+          setRlMetrics(p => ({
+            ...p,
+            loss_history: [...p.loss_history, loss].slice(-100),
+            step: p.step + 1,
+          }));
+          setTrainPulse(loss);
+          setTimeout(() => setTrainPulse(null), 2500);
+        } else {
+          try { const m = await api.rlMetrics(userId); setRlMetrics(m); } catch (_) {}
+        }
       } else {
+        const mockLoss = Math.max(0.1, (rlMetrics.loss_history.at(-1) || 0.8) - 0.05 + (Math.random() * 0.02 - 0.01));
         setRlMetrics(p => ({
-          loss_history: [...p.loss_history, Math.max(0.1, (p.loss_history.at(-1) || 0.8) - 0.05 + (Math.random() * 0.02 - 0.01))].slice(-100),
+          loss_history: [...p.loss_history, mockLoss].slice(-100),
           step: p.step + 1,
           arch: "DIF-SASRec",
         }));
+        if (action !== "skip") {
+          setTrainPulse(mockLoss);
+          setTimeout(() => setTrainPulse(null), 2500);
+        }
       }
       setLastTrained(new Date());
       if ((rlStep + 1) % 3 === 0) setTimeout(loadRecs, 800);
@@ -201,13 +249,17 @@ export default function App() {
     ? (interactions.filter(i => i.action === "click" || i.action === "cart").length / interactions.length * 100).toFixed(1)
     : "—";
 
-  // Pre-compute sparkline points once per loss_history change instead of on every render
-  const sparklinePoints = useMemo(() => {
+  // Pre-compute sparkline points + phase split index once per loss_history change
+  const { sparklinePoints, onlineStartIdx } = useMemo(() => {
     const h = rlMetrics.loss_history;
-    if (h.length < 2) return null;
+    if (h.length < 2) return { sparklinePoints: null, onlineStartIdx: null };
     const min = Math.min(...h), max = Math.max(...h), range = max - min || 1;
-    return h.map((v, i) => `${i},${1 - (v - min) / range}`).join(" ");
-  }, [rlMetrics.loss_history]);
+    const pts = h.map((v, i) => `${i},${1 - (v - min) / range}`).join(" ");
+    // C: how many points are pretraining vs online
+    // rlMetrics.step = number of online gradient steps appended after the checkpoint
+    const split = rlMetrics.step > 0 ? h.length - rlMetrics.step : null;
+    return { sparklinePoints: pts, onlineStartIdx: split };
+  }, [rlMetrics.loss_history, rlMetrics.step]);
 
   // ── Shared class shorthands ──────────────────────────────────────────────────
   const CARD    = "rounded-xl border border-[#babbbd] dark:border-[#627d9a]/70 bg-white/50 dark:bg-[#fffef7]/5 shadow-sm";
@@ -516,7 +568,29 @@ export default function App() {
             <div className="flex flex-col flex-1 overflow-hidden px-4 pt-4 gap-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-[12px] font-medium text-[#2e3257] dark:text-[#fffef7]">Personalized For You</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-[12px] font-medium text-[#2e3257] dark:text-[#fffef7]">Personalized For You</p>
+                    {/* A: cold-start / personalised status pill */}
+                    {recMode === "personalized" && (
+                      <span className="flex items-center gap-1 px-2 py-0.5 rounded-full fade-in
+                                       bg-emerald-50 dark:bg-emerald-900/20
+                                       border border-emerald-300 dark:border-emerald-700/50
+                                       text-emerald-700 dark:text-emerald-400"
+                            style={{ fontSize: 9 }}>
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 live-dot" />
+                        DIF-SASRec active
+                      </span>
+                    )}
+                    {recMode === "cold_start" && (
+                      <span className="px-2 py-0.5 rounded-full fade-in
+                                       bg-[#babbbd]/15 dark:bg-[#627d9a]/15
+                                       border border-[#babbbd]/40 dark:border-[#627d9a]/40
+                                       text-[#babbbd] dark:text-[#627d9a]"
+                            style={{ fontSize: 9 }}>
+                        Discovery mode
+                      </span>
+                    )}
+                  </div>
                   <p className="text-[10px] text-[#627d9a] dark:text-[#babbbd] mt-0.5">Retrieval + DIF-SASRec Multi-mode</p>
                 </div>
                 <button
@@ -563,6 +637,52 @@ export default function App() {
                 ))}
               </div>
 
+              {/* B: DIF-SASRec input sequence strip */}
+              {recTab === "yml" && recMode === "personalized" && (() => {
+                const seq = interactions
+                  .filter(i => i.action === "click" || i.action === "cart")
+                  .slice(0, 8)
+                  .reverse();
+                if (seq.length < 2) return null;
+                return (
+                  <div className="shrink-0">
+                    <p className="text-[9px] font-mono text-[#627d9a] dark:text-[#babbbd] mb-1 px-0.5 tracking-wide">
+                      DIF-SASRec reads →
+                    </p>
+                    <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
+                      {seq.map((item, idx) => {
+                        const bg = item.cover_color || "#1e1b4b";
+                        const isCart = item.action === "cart";
+                        return (
+                          <div key={idx} className="relative shrink-0 flex flex-col items-center gap-0.5" style={{ width: 40 }}>
+                            <div
+                              className="w-10 h-14 rounded-md flex items-end justify-center overflow-hidden border border-[#babbbd]/40 dark:border-[#627d9a]/30"
+                              style={{ background: bg }}
+                            >
+                              {item.image_url ? (
+                                <img src={item.image_url} alt="" className="w-full h-full object-cover" />
+                              ) : (
+                                <span className="text-white/50 font-serif text-[8px] pb-0.5 px-0.5 text-center leading-tight">
+                                  {(item.title || "").slice(0, 12)}
+                                </span>
+                              )}
+                            </div>
+                            <span
+                              className={`text-[7px] font-mono px-1 py-0.5 rounded-full border leading-none
+                                ${isCart
+                                  ? "bg-emerald-50 dark:bg-emerald-900/20 border-emerald-300 dark:border-emerald-700/60 text-emerald-700 dark:text-emerald-400"
+                                  : "bg-[#dfc5a4]/20 border-[#dfc5a4]/50 text-[#627d9a] dark:text-[#babbbd]"}`}
+                            >
+                              {isCart ? "cart" : "✓"}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+
               <div className="flex-1 overflow-y-auto space-y-2 pr-1">
                 {isLoadingRecs ? (
                   [0,1,2,3].map(i => <SkeletonCard key={i} size="sm" />)
@@ -579,7 +699,11 @@ export default function App() {
                   </div>
                 ) : (
                   (recTab === "pab" ? recommendations.people_also_buy : recommendations.you_might_like)?.map((book, i) => (
-                    <RecommendCard key={i} book={book} rank={i} onInteract={handleInteract} onAskAIStream={handleAskAIStream} />
+                    <RecommendCard
+                      key={i} book={book} rank={i}
+                      onInteract={handleInteract} onAskAIStream={handleAskAIStream}
+                      isNew={recTab === "yml" && newRecAsins.has(book.id)}
+                    />
                   ))
                 )}
               </div>
@@ -661,24 +785,69 @@ export default function App() {
                 <div className={`p-3 ${CARD}`}>
                   <div className="flex items-center justify-between mb-2">
                     <div>
-                      <p className="text-[10px] font-semibold tracking-widest uppercase text-[#babbbd] dark:text-[#627d9a]">SASRec Loss</p>
+                      {/* C: InfoTooltip explaining the pretraining→online drop */}
+                      <div className="flex items-center">
+                        <p className="text-[10px] font-semibold tracking-widest uppercase text-[#babbbd] dark:text-[#627d9a]">SASRec Loss</p>
+                        <InfoTooltip
+                          tip="The sharp drop from ~5.3 to ~0.5 is expected, not instability. Pretraining uses 512 hard negatives; online training uses random negatives from 3M+ books (much easier). The pretrained model already ranks similar items well."
+                          formula="Pretrain loss ≠ Online loss scale"
+                        />
+                      </div>
                       <p className="font-mono text-[9px] text-[#babbbd] dark:text-[#627d9a] mt-0.5">{rlMetrics.step} online steps</p>
                     </div>
-                    <span className="font-mono font-semibold text-[#2e3257] dark:text-[#dfc5a4]" style={{ fontSize: 13 }}>
-                      {rlMetrics.loss_history.length > 0 ? rlMetrics.loss_history.at(-1).toFixed(4) : "0.0000"}
-                    </span>
-                  </div>
-                  {sparklinePoints ? (
-                    <div className="h-14 w-full relative" style={{ borderBottom: "1px solid #babbbd55" }}>
-                      <svg className="absolute inset-0 w-full h-full overflow-visible" preserveAspectRatio="none"
-                        viewBox={`0 0 ${Math.max(1, rlMetrics.loss_history.length - 1)} 1`}>
-                        <polyline
-                          fill="none" stroke="#627d9a" strokeWidth="0.05" vectorEffect="non-scaling-stroke"
-                          points={sparklinePoints}
-                        />
-                      </svg>
+                    <div className="flex items-center gap-2">
+                      {/* D: training pulse badge */}
+                      {trainPulse != null && (
+                        <span className="fade-in font-mono text-[9px] text-emerald-500 dark:text-emerald-400">
+                          ↓ {trainPulse.toFixed(3)} trained
+                        </span>
+                      )}
+                      <span className="font-mono font-semibold text-[#2e3257] dark:text-[#dfc5a4]" style={{ fontSize: 13 }}>
+                        {rlMetrics.loss_history.length > 0 ? rlMetrics.loss_history.at(-1).toFixed(4) : "0.0000"}
+                      </span>
                     </div>
-                  ) : (
+                  </div>
+                  {sparklinePoints ? (() => {
+                    const total = rlMetrics.loss_history.length;
+                    const vbW   = Math.max(1, total - 1);
+                    // C: phase split position as fraction of viewBox width
+                    const splitX = onlineStartIdx != null && onlineStartIdx > 0 && onlineStartIdx < total
+                      ? onlineStartIdx - 0.5
+                      : null;
+                    return (
+                      <div className="w-full relative" style={{ height: 56, borderBottom: "1px solid #babbbd55" }}>
+                        <svg className="absolute inset-0 w-full h-full overflow-visible" preserveAspectRatio="none"
+                          viewBox={`0 0 ${vbW} 1`}>
+                          <polyline
+                            fill="none" stroke="#627d9a" strokeWidth="0.05" vectorEffect="non-scaling-stroke"
+                            points={sparklinePoints}
+                          />
+                          {/* C: phase divider */}
+                          {splitX != null && (
+                            <line
+                              x1={splitX} y1={0} x2={splitX} y2={1}
+                              stroke="#dfc5a4" strokeWidth="0.04"
+                              strokeDasharray="0.08 0.06"
+                              vectorEffect="non-scaling-stroke"
+                            />
+                          )}
+                        </svg>
+                        {/* C: phase labels */}
+                        {splitX != null && (
+                          <>
+                            <span className="absolute top-0 font-mono text-[8px] text-[#babbbd] dark:text-[#627d9a]"
+                                  style={{ left: `${Math.max(0, (splitX / vbW) * 100 - 20)}%`, opacity: 0.7 }}>
+                              Pretrain
+                            </span>
+                            <span className="absolute top-0 font-mono text-[8px] text-[#dfc5a4]"
+                                  style={{ left: `${Math.min(95, (splitX / vbW) * 100 + 2)}%`, opacity: 0.9 }}>
+                              Online
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })() : (
                     <div className={`h-14 flex items-center justify-center rounded-lg border ${DIVIDER}`}>
                       <span className="text-[9px] text-[#babbbd] dark:text-[#627d9a]">Interact to see loss converge</span>
                     </div>
