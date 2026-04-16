@@ -12,8 +12,9 @@ Reciprocal Rank Fusion for active search, and combines Cleora graph
 embeddings with a DIF-SASRec sequential transformer for passive
 personalization — all driven by a shared, continuously updated user profile.
 Evaluated on a 3.08-million-item Amazon Books catalog with 100k user
-histories, DIF-SASRec achieves HR@10 of 0.7749 (+78\% over a content-only
-baseline).
+histories, the dual-pipeline system achieves HR@10 of 0.7886 (+81\% over
+a content-only baseline), with Pipeline~A rescuing 59\% of DIF-SASRec misses
+and DIF-SASRec rescuing 11\% of Pipeline~A misses.
 The system handles 19 languages via NLLB-200 and serves warm-path queries
 at 34\,ms P50.
 %

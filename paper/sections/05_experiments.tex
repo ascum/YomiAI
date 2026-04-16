@@ -13,9 +13,13 @@ held out for testing; the remaining interactions form the training set.
 \subsection{Evaluation Metrics}
 We report Hit Rate at rank 10 (HR@10) and Normalized Discounted Cumulative
 Gain at rank 10 (NDCG@10) on the held-out items.
-Crucially, each prediction is ranked against all 3.08M catalog items
-rather than a sampled subset, which we consider essential for
-production-realistic evaluation.
+Following the standard protocol used in SASRec~\cite{kang2018self} and
+DIF-SASRec~\cite{xie2022difsr}, each held-out item is ranked against
+99 randomly sampled negative items (100 candidates total, random tiebreak),
+yielding a random-chance baseline of HR@10 = 0.10.
+We additionally evaluate under a stricter 999-negative protocol
+(1\,000 candidates; random baseline HR@10 = 0.01) to assess robustness
+to pool size (Section~\ref{ssec:robustness}).
 
 \subsection{Baselines}
 \input{tables/baselines}

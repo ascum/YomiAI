@@ -192,6 +192,45 @@ class DIFSASRecStrategy:
         return [a for a, _ in sorted(scores.items(), key=lambda x: x[1], reverse=True)][:k]
 
 
+class PipelineAStrategy:
+    """
+    Pipeline A: Cleora behavioral graph + BGE-M3 profile similarity ranking.
+
+    Scoring rule:
+      - Candidate in Cleora index  → cosine(profile, candidate_bge_vec)
+      - Candidate outside Cleora   → -2.0  (below any real cosine in [-1, 1])
+
+    This faithfully models the coverage constraint: Pipeline A cannot
+    retrieve non-Cleora items in the live system.
+    """
+    name = "Pipeline A (Cleora)"
+
+    def __init__(self, retriever, emb_cache: dict = None):
+        self.retriever = retriever
+        self.emb_cache = emb_cache or {}
+
+    def _vec(self, asin):
+        if asin in self.emb_cache:
+            return self.emb_cache[asin]
+        if asin in self.retriever.asin_to_idx:
+            return self.retriever.text_flat.reconstruct(self.retriever.asin_to_idx[asin])
+        return None
+
+    def score_candidates(self, train_clicks: list, candidate_asins: list) -> dict:
+        vecs = [v for a in train_clicks if (v := self._vec(a)) is not None]
+        if not vecs:
+            return {a: -2.0 for a in candidate_asins}
+        profile = np.mean(vecs, axis=0)
+        scores = {}
+        for asin in candidate_asins:
+            if asin not in self.retriever.asin_to_cleora_idx:
+                scores[asin] = -2.0
+            else:
+                v = self._vec(asin)
+                scores[asin] = float(profile @ v) if v is not None else -2.0
+        return scores
+
+
 # ─── Metric helpers ───────────────────────────────────────────────────────────
 
 def hit_rate(ranked: list, target: str, k: int) -> float:
@@ -303,6 +342,7 @@ def eval_sampled(strategy, eval_users, all_asins, neg_pool_asins,
             continue
 
         candidates = [target] + negs
+        random.shuffle(candidates)          # break ties randomly, not in favour of target
         scores     = strategy.score_candidates(train, candidates)
         ranked     = sorted(candidates, key=lambda a: scores.get(a, 0.0), reverse=True)
 
@@ -513,6 +553,8 @@ def parse_args():
                    help="Random seed for negative pool sampling (default: unseeded)")
     p.add_argument("--dif-only", action="store_true",
                    help="Only evaluate DIF-SASRec — skip Content-KNN and GRU-SeqDQN")
+    p.add_argument("--pipeline-a-only", action="store_true",
+                   help="Only evaluate Pipeline A (Cleora+BGE-M3) — no model inference needed")
     p.add_argument("--pretrained-path", type=str, default=None,
                    help="Path to DIF-SASRec checkpoint (default: data/dif_sasrec_pretrained.pt)")
     return p.parse_args()
@@ -576,13 +618,19 @@ def main():
     )
 
     # ── Build strategies ─────────────────────────────────────────────────────
-    dif_strategy = DIFSASRecStrategy(
-        retriever, cat_encoder, emb_cache,
-        pretrained_path=pretrained_path if os.path.exists(pretrained_path) else None,
-    )
-    if args.dif_only:
+    if args.pipeline_a_only:
+        strategies = [PipelineAStrategy(retriever, emb_cache)]
+    elif args.dif_only:
+        dif_strategy = DIFSASRecStrategy(
+            retriever, cat_encoder, emb_cache,
+            pretrained_path=pretrained_path if os.path.exists(pretrained_path) else None,
+        )
         strategies = [dif_strategy]
     else:
+        dif_strategy = DIFSASRecStrategy(
+            retriever, cat_encoder, emb_cache,
+            pretrained_path=pretrained_path if os.path.exists(pretrained_path) else None,
+        )
         strategies = [
             ContentBaseline(retriever, emb_cache),
             GRUSeqDQNStrategy(retriever, emb_cache),

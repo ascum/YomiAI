@@ -43,13 +43,17 @@ ten times harder than the standard setting.
 
 \input{tables/robustness_results}
 
-DIF-SASRec remains the strongest model at this harder setting
-(HR@10 = 0.3142, NDCG@10 = 0.2209).
+Pipeline~A achieves the highest HR@10 of \textbf{0.3264} at this harder
+setting, while DIF-SASRec leads on NDCG@10 (\textbf{0.2209} vs 0.2096),
+indicating that DIF-SASRec tends to rank hits closer to position~1
+when it does retrieve the target.
 Content-KNN drops to 0.2122 HR@10.
-Notably, DIF-SASRec's relative advantage over the random baseline
-\emph{increases} from $4.8\times$ (99-negative) to $31\times$
-(999-negative), indicating the model's discriminative ability is not
-an artefact of easy negatives in the standard pool.
+Crucially, both Pipeline~A and DIF-SASRec show an \emph{increasing}
+relative advantage over the random baseline as the pool grows:
+Pipeline~A rises from $7.6\times$ (99-negative) to $32.6\times$
+(999-negative); DIF-SASRec from $4.8\times$ to $31.4\times$.
+Neither model's performance is an artefact of easy negatives in the
+standard pool.
 
 \subsection{Ablation Study}
 Table~\ref{tab:ablation} reports both pipeline-level and component-level
@@ -81,7 +85,7 @@ The largest single drop ($-7.9\%$ HR@10) comes from removing the
 per-user fine-tuning step.
 This confirms that the pretrained model alone under-fits individual
 preference trajectories; the online gradient step is the primary driver
-of personalisation beyond the pretrained prior.
+of personalization beyond the pretrained prior.
 
 \paragraph{Dual-stream attention.}
 Replacing the decoupled content/category attention with a single merged
@@ -138,5 +142,5 @@ by stress-testing with 20 concurrent requests.
 Each agent holds a pretrained weight snapshot in CPU RAM ($\sim$148\,MB)
 for new-user cold-start initialization, with fine-tuned weights kept in
 GPU memory only for the duration of the request.
-Total pool VRAM footprint is 1.18\,GB, leaving headroom on a 24\,GB card
+Total pool VRAM footprint is 1.18\,GB, leaving headroom on the 16\,GB card
 for the FAISS HNSW indices and encoder models.

@@ -8,13 +8,13 @@ customer at a specific point in time — such as recommending a product,
 sending a personalised offer, or suggesting support.
 Current NBA research and deployments rely predominantly on
 \emph{structured} transaction data: purchase logs, click histories, and
-demographic records~\cite{he2020lightgcn}.
+demographic records.
 However, customers increasingly generate large volumes of
 \emph{unstructured and multimedia} data — natural language queries, images,
 and rich interaction sequences — which, if effectively leveraged, can
 provide crucial contextual signals for more accurate and personalised
 recommendations.
-Bridging the gap between structured behavioural signals and unstructured
+Bridging the gap between structured behavioral signals and unstructured
 multimedia content is therefore a central challenge in modern NBA system
 design.
 
@@ -24,7 +24,7 @@ Users who know what they want issue free-text or image-based queries
 (active search), while passive browsers benefit most from proactive
 suggestions derived from their interaction history (passive recommendation).
 Most existing systems address only one of these modes, leaving an
-\emph{interaction-content gap}: behavioural co-purchase signals are
+\emph{interaction-content gap}: behavioral co-purchase signals are
 decoupled from semantic content understanding (titles, descriptions, cover
 images).
 Collaborative filtering excels at crowd wisdom but suffers from cold-start
@@ -32,11 +32,11 @@ and ignores multimodal content~\cite{he2020lightgcn}.
 Sequential models~\cite{kang2018self} capture preference evolution but
 typically discard visual signals.
 Content-based encoders retrieve semantically relevant items but lack the
-relational structure that behavioural graphs provide.
+relational structure that behavioral graphs provide.
 
 % Paragraph 3 — Our approach & contributions
 We propose a \textbf{Dual-Mode Multimodal NBA Recommendation System} that
-mines text, visual, and behavioural multimedia data jointly, addressing
+mines text, visual, and behavioral multimedia data jointly, addressing
 both the active and passive recommendation settings within a single
 architecture:
 \begin{itemize}
@@ -45,9 +45,9 @@ architecture:
         and CLIP image embeddings via Reciprocal Rank Fusion (RRF), with
         optional BM25 keyword boosting and multi-layer LRU caching.
   \item \textbf{Mode~2 (Passive Recommendation):} two complementary
-        pipelines — (a)~Cleora graph embeddings for behavioural similarity
+        pipelines — (a)~Cleora graph embeddings for behavioral similarity
         (\emph{People Also Buy}), and (b)~DIF-SASRec sequential
-        personalisation (\emph{You Might Like}).
+        personalization (\emph{You Might Like}).
   \item A \textbf{shared user profile} continuously updated after every
         interaction, bridging both modes with temporal weighting and
         enabling online adaptation of the sequential model.

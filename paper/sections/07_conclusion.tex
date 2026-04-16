@@ -2,21 +2,18 @@
 \label{sec:conclusion}
 
 We presented a dual-mode multimodal NBA recommendation system that mines
-text, visual, and behavioural multimedia data to unify active search and
-passive personalisation within a single architecture.
-The work addresses the two-phase project scope: Phase~1 established the
-data collection and preprocessing pipeline, extracted multimodal features
-via BGE-M3 and CLIP, and evaluated NBA models across multiple data sources;
-Phase~2 delivered the full integrated system combining Cleora behavioural
-graphs with DIF-SASRec sequential personalisation, along with end-to-end
-evaluation and comparison against baseline approaches.
+text, visual, and behavioral multimedia data to unify active search and
+passive personalization within a single architecture.
+The system integrates multimodal feature extraction via BGE-M3 and CLIP
+with Cleora behavioral graphs and DIF-SASRec sequential personalization,
+evaluated end-to-end against multiple baseline approaches.
 
 By grounding DIF-SASRec in dense BGE-M3 content embeddings rather than
 item IDs, the system generalises to the full 3.08M-item catalog without
 retraining.
 Pipeline~A (Cleora behavioral graph + BGE-M3 ranking) provides strong
 content-aware retrieval, while DIF-SASRec delivers complementary
-sequential personalisation via online adaptation.
+sequential personalization via online adaptation.
 Complementarity analysis shows Pipeline~A rescues 59\% of DIF-SASRec
 misses, and the union system achieves HR@10 of \textbf{0.7886}
 (+81\% over the content-only baseline), with warm-path P50 latency of

@@ -55,9 +55,12 @@ The top-$N$ items by $s_{\text{RRF}}$ are returned with metadata.
   \item \textbf{Content veto.} Each candidate is scored against the user's
         aggregated BGE-M3 and CLIP profile vectors.
         Candidates satisfying
-        $\max(\cos(\mathbf{e}^{\text{bge}}_c, \mathbf{p}^{\text{bge}}),\,
-              \cos(\mathbf{e}^{\text{clip}}_c, \mathbf{p}^{\text{clip}}))
-         < 0.3$
+        \begin{equation*}
+          \max\!\bigl(
+            \cos(\mathbf{e}^{\text{bge}}_c,\,\mathbf{p}^{\text{bge}}),\;
+            \cos(\mathbf{e}^{\text{clip}}_c,\,\mathbf{p}^{\text{clip}})
+          \bigr) < 0.3
+        \end{equation*}
         are discarded.
   \item \textbf{Ranking.} Survivors are ranked by cosine similarity to the
         aggregated profile and the top-$K$ are returned.
