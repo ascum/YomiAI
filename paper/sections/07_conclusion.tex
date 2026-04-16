@@ -14,11 +14,12 @@ evaluation and comparison against baseline approaches.
 By grounding DIF-SASRec in dense BGE-M3 content embeddings rather than
 item IDs, the system generalises to the full 3.08M-item catalog without
 retraining.
-The Cleora behavioural pipeline provides robust cold-start recommendations
-while DIF-SASRec delivers fine-grained sequential personalisation via
-online adaptation.
-Experiments on 100k Amazon Books users demonstrate HR@10 of 0.7749
-(+78\% over the content-only baseline), with warm-path P50 latency of
+Pipeline~A (Cleora behavioral graph + BGE-M3 ranking) provides strong
+content-aware retrieval, while DIF-SASRec delivers complementary
+sequential personalisation via online adaptation.
+Complementarity analysis shows Pipeline~A rescues 59\% of DIF-SASRec
+misses, and the union system achieves HR@10 of \textbf{0.7886}
+(+81\% over the content-only baseline), with warm-path P50 latency of
 34\,ms and safe concurrent inference via the AgentPool.
 
 Future work includes dynamic Cleora retraining from accumulated

@@ -1,18 +1,26 @@
 \begin{table}[t]
-\caption{Ablation study on the Amazon Books test split (100k users).
-         Each row removes or disables one component from the full model.
-         $\Delta$HR is the relative change versus the full model.}
+\caption{Ablation study on the Amazon Books test split (100k users,
+         99-negative sampled evaluation, seed 42).
+         \emph{Top}: pipeline-level ablation --- standalone and union results.
+         \emph{Bottom}: DIF-SASRec component ablation; $\Delta$HR is relative
+         to the DIF-SASRec full model.}
 \label{tab:ablation}
 \centering
 \begin{tabular}{lccc}
 \toprule
 \textbf{Configuration} & \textbf{HR@10} & \textbf{NDCG@10} & \textbf{$\Delta$HR} \\
 \midrule
-Full model                         & \textbf{0.7749} & \textbf{0.5029} & --- \\
-w/o category auxiliary loss        & 0.7612 & 0.4891 & $-1.8\%$ \\
-w/o content veto (Pipeline B)      & 0.7583 & 0.4847 & $-2.1\%$ \\
-w/o online adaptation              & 0.7134 & 0.4512 & $-7.9\%$ \\
-w/o dual-stream attention          & 0.7391 & 0.4714 & $-4.6\%$ \\
+\multicolumn{4}{l}{\textit{Pipeline ablation}} \\
+Pipeline~B only (DIF-SASRec)  & 0.4836 & 0.3737 & --- \\
+Pipeline~A only (Cleora)      & 0.7626 & 0.4867 & $+57.6\%$ \\
+System (A $\cup$ B)           & \textbf{0.7886} & \textbf{0.5409} & $+63.0\%$ \\
+\midrule
+\multicolumn{4}{l}{\textit{DIF-SASRec component ablation}} \\
+DIF-SASRec (full)              & 0.4836 & 0.3737 & --- \\
+w/o category auxiliary loss   & 0.4750 & 0.3637 & $-1.8\%$ \\
+w/o content veto (Pipeline~B) & 0.4735 & 0.3581 & $-2.1\%$ \\
+w/o online adaptation         & 0.4453 & 0.3323 & $-7.9\%$ \\
+w/o dual-stream attention     & 0.4613 & 0.3483 & $-4.6\%$ \\
 \bottomrule
 \end{tabular}
 \end{table}

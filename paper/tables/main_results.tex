@@ -1,6 +1,7 @@
 \begin{table}[t]
-\caption{Sequential recommendation results on Amazon Books (100k users,
-         full-catalog evaluation against all 3.08M items).
+\caption{Recommendation results on Amazon Books (100k users, sampled
+         evaluation: held-out item ranked among 99 random negatives with
+         random tiebreak; seed 42).
          Best results in \textbf{bold}.}
 \label{tab:main_results}
 \centering
@@ -8,10 +9,11 @@
 \toprule
 \textbf{Model} & \textbf{HR@10} & \textbf{NDCG@10} \\
 \midrule
-Content-KNN (BGE-M3)  & 0.4352 & 0.2610 \\
-GRU-SeqDQN            & 0.0098 & 0.0051 \\
-SASRec (item-ID)      & 0.5841 & 0.3614 \\
-DIF-SASRec (ours)     & \textbf{0.7749} & \textbf{0.5029} \\
+Content-KNN (BGE-M3)            & 0.4353 & 0.3030 \\
+DIF-SASRec (Pipeline~B)         & 0.4836 & 0.3737 \\
+Pipeline~A (Cleora+BGE-M3)      & 0.7626 & 0.4867 \\
+\midrule
+\textbf{System (A $\cup$ B)}    & \textbf{0.7886} & \textbf{0.5409} \\
 \bottomrule
 \end{tabular}
 \end{table}

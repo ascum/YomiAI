@@ -1,9 +1,10 @@
 % Called via \input{tables/baselines} inside the Baselines subsection.
 We compare against:
-\textbf{Content-KNN} — cosine nearest neighbor on BGE-M3 embeddings,
+\textbf{Content-KNN} --- cosine nearest neighbor on BGE-M3 embeddings,
 no sequential modeling;
-\textbf{GRU-SeqDQN} — GRU-based sequential model trained with DQN-style
-rewards~\cite{zhao2018deep};
-\textbf{SASRec (ID)} — original SASRec with item-ID embeddings;
-\textbf{DIF-SASRec (ours)} — DIF-SASRec with BGE-M3 content embeddings,
-category auxiliary loss, and online adaptation.
+\textbf{DIF-SASRec (Pipeline~B)} --- DIF-SASRec with BGE-M3 content embeddings,
+category auxiliary loss, and online adaptation (Pipeline~B of our system);
+\textbf{Pipeline~A (Cleora)} --- Cleora behavioral graph embeddings with BGE-M3
+profile similarity ranking, without DIF-SASRec scoring;
+\textbf{System (A $\cup$ B)} --- the full dual-pipeline system, returning the
+union of the top-10 lists from Pipeline~A and Pipeline~B.

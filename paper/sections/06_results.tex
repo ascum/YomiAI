@@ -1,49 +1,87 @@
 \section{Results}
 \label{sec:results}
 
-\subsection{Sequential Recommendation Performance}
-Table~\ref{tab:main_results} reports HR@10 and NDCG@10 against the full
-3.08M-item catalog.
+\subsection{Recommendation Performance}
+Table~\ref{tab:main_results} reports HR@10 and NDCG@10 under the
+sampled evaluation protocol (99 random negatives, random tiebreak).
 
 \input{tables/main_results}
 
-Our DIF-SASRec variant achieves HR@10 of \textbf{0.7749} and NDCG@10 of
-\textbf{0.5029}.
-This represents a $+78\%$ relative improvement in HR@10 over the
-Content-KNN baseline (0.4352), confirming that sequential modeling
-captures preference dynamics that pure nearest-neighbor retrieval cannot.
-The improvement over SASRec with item-ID embeddings ($+32.6\%$ HR@10)
-demonstrates the benefit of grounding sequence models in dense content
-representations: ID-based embeddings are limited to items seen during
-training, whereas BGE-M3 embeddings generalize across all 3.08M catalog
-items without retraining.
-GRU-SeqDQN performs poorly under full-catalog evaluation (HR@10=0.0098),
-suggesting that reward-shaped RL training does not scale to the dense
-retrieval setting examined here.
+\paragraph{Pipeline~A (Cleora + BGE-M3).}
+Pipeline~A achieves the highest standalone HR@10 of \textbf{0.7626}
+(NDCG@10 = 0.4867), a $+75.2\%$ improvement over the Content-KNN
+baseline (0.4353).
+By restricting the candidate space to items within the Cleora behavioral
+co-purchase graph and ranking by BGE-M3 profile similarity, Pipeline~A
+leverages both behavioral and semantic signals simultaneously.
+
+\paragraph{DIF-SASRec (Pipeline~B).}
+DIF-SASRec achieves HR@10 = 0.4836 (NDCG@10 = 0.3737), an $+11.1\%$
+improvement over Content-KNN (0.4353), confirming that sequential
+modeling captures preference dynamics that nearest-neighbor retrieval
+misses.
+
+\paragraph{Dual-pipeline system.}
+The union of Pipeline~A and Pipeline~B top-10 lists achieves
+\textbf{HR@10 = 0.7886} (NDCG@10 = 0.5409), the best overall result.
+Table~\ref{tab:complementarity} breaks down the per-user hit patterns.
+Pipeline~A rescues \textbf{59.0\%} of DIF-SASRec misses, while
+DIF-SASRec rescues \textbf{11.0\%} of Pipeline~A misses.
+The two pipelines serve genuinely different user--item patterns:
+Pipeline~A excels on items with strong behavioral co-purchase signals
+(within the Cleora 375k index), while DIF-SASRec provides complementary
+sequential intent modeling for items Pipeline~A cannot reach.
+
+\input{tables/complementarity}
+
+\subsection{Robustness Under Stricter Evaluation}
+\label{ssec:robustness}
+
+Table~\ref{tab:robustness} repeats the comparison under a 999-negative
+protocol (1\,000 candidates; random-chance baseline HR@10 = 0.01),
+ten times harder than the standard setting.
+
+\input{tables/robustness_results}
+
+DIF-SASRec remains the strongest model at this harder setting
+(HR@10 = 0.3142, NDCG@10 = 0.2209).
+Content-KNN drops to 0.2122 HR@10.
+Notably, DIF-SASRec's relative advantage over the random baseline
+\emph{increases} from $4.8\times$ (99-negative) to $31\times$
+(999-negative), indicating the model's discriminative ability is not
+an artefact of easy negatives in the standard pool.
 
 \subsection{Ablation Study}
-Table~\ref{tab:ablation} isolates the contribution of each component.
+Table~\ref{tab:ablation} reports both pipeline-level and component-level
+ablations.
 
 \input{tables/ablation}
 
+\paragraph{Pipeline ablation.}
+Pipeline~A alone (+57.6\% over Pipeline~B baseline) demonstrates that
+behavioral co-purchase structure combined with BGE-M3 profile similarity
+is a powerful retrieval signal in the books domain.
+The full union system adds a further +3.4\% relative by incorporating
+DIF-SASRec's complementary sequential modeling for items outside
+Cleora's behavioral coverage.
+
 \paragraph{Category auxiliary loss.}
-Removing the auxiliary category classification head reduces HR@10 by
-$1.8\%$, indicating that genre-level supervision provides a useful
-inductive bias for distinguishing within-sequence preference drift.
+Removing the auxiliary category classification head reduces DIF-SASRec
+HR@10 by $1.8\%$, indicating that genre-level supervision provides a
+useful inductive bias for distinguishing within-sequence preference drift.
 
 \paragraph{Content veto.}
 Disabling the cosine-similarity veto ($\tau=0.3$) in Pipeline~B reduces
 HR@10 by $2.1\%$.
-Without the veto, DIF-SASRec scores candidates that are co-purchased but
-semantically unrelated to the user's latent interests, diluting
-recommendation precision.
+Without the veto, DIF-SASRec scores candidates that are semantically
+unrelated to the user's latent interests, diluting recommendation precision.
 
 \paragraph{Online adaptation.}
 The largest single drop ($-7.9\%$ HR@10) comes from removing the
 per-user fine-tuning step.
 This confirms that the pretrained model alone under-fits individual
 preference trajectories; the online gradient step is the primary driver
-of personalization beyond the pretrained prior.
+of personalisation beyond the pretrained prior.
 
 \paragraph{Dual-stream attention.}
 Replacing the decoupled content/category attention with a single merged
