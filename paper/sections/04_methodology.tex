@@ -11,7 +11,7 @@ the system produces a ranked list via:
 The system supports queries in 19 languages: Vietnamese, French, German,
 Spanish, Chinese, Japanese, Korean, Arabic, Portuguese, Russian, Italian,
 Thai, Indonesian, Dutch, Polish, Turkish, Ukrainian, Hindi, and Swedish.
-Lingua detects the source language in under 1\,ms.
+Lingua\footnote{\url{https://github.com/pemistahl/lingua-py}} detects the source language in under 1\,ms.
 Non-English queries are translated to English by NLLB-200-Distilled-600M~\cite{costa2022nllb}
 using a two-tier strategy: a greedy pass ($\text{num\_beams}=1$, $\sim$16\,ms)
 followed by a beam-search fallback ($\text{num\_beams}=4$, $\sim$30\,ms) only
@@ -97,7 +97,7 @@ We train on 100k users from Amazon Books with an 80/20 temporal split.
 Sampled softmax loss with 512 negatives per step scales to the 3M-item catalog.
 An auxiliary category classification loss with weight $\lambda = 0.1$
 stabilizes genre-level understanding.
-We use AdamW ($\text{lr}=10^{-3}$, $\text{wd}=0.01$) with linear warmup
+We use AdamW~\cite{loshchilov2019decoupled} ($\text{lr}=10^{-3}$, $\text{wd}=0.01$) with linear warmup
 (2 epochs) and cosine decay over 30 epochs, batch size 2048 with AMP float16.
 
 \paragraph{Online adaptation.}

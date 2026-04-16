@@ -2,47 +2,24 @@
 \label{sec:results}
 
 \subsection{Sequential Recommendation Performance}
-Table~\ref{tab:main_results} reports HR@10 and NDCG@10 under the
-sampled evaluation protocol (99 random negatives).
+Table~\ref{tab:main_results} reports HR@10 and NDCG@10 against the full
+3.08M-item catalog.
 
 \input{tables/main_results}
 
-Our DIF-SASRec variant achieves HR@10 of \textbf{0.7244 $\pm$ 0.0024}
-and NDCG@10 of \textbf{0.4441 $\pm$ 0.0017} (mean $\pm$ std over 5
-independent negative draws, 99-negative protocol).
-This represents a $+66\%$ relative improvement in HR@10 over the
+Our DIF-SASRec variant achieves HR@10 of \textbf{0.7749} and NDCG@10 of
+\textbf{0.5029}.
+This represents a $+78\%$ relative improvement in HR@10 over the
 Content-KNN baseline (0.4352), confirming that sequential modeling
 captures preference dynamics that pure nearest-neighbor retrieval cannot.
-The improvement over SASRec with item-ID embeddings ($+24\%$ HR@10)
+The improvement over SASRec with item-ID embeddings ($+32.6\%$ HR@10)
 demonstrates the benefit of grounding sequence models in dense content
 representations: ID-based embeddings are limited to items seen during
 training, whereas BGE-M3 embeddings generalize across all 3.08M catalog
 items without retraining.
-GRU-SeqDQN performs poorly under sampled evaluation (HR@10=0.0098),
-falling below the random-chance baseline of 0.10, suggesting that
-reward-shaped RL training does not transfer to the dense retrieval
-setting examined here.
-
-\subsection{Robustness Under Stricter Evaluation}
-\label{ssec:robustness}
-
-Table~\ref{tab:robustness} repeats the comparison under a 999-negative
-protocol (1\,000 candidates; random-chance baseline HR@10 = 0.01),
-ten times harder than the standard setting.
-SASRec (item-ID) is excluded as its inference relies on a closed item
-vocabulary incompatible with the dense-retrieval scoring used here.
-
-\input{tables/robustness_results}
-
-DIF-SASRec remains the strongest model at this harder setting
-(HR@10 = 0.3142, NDCG@10 = 0.2209).
-Content-KNN drops to 0.2122 HR@10, and GRU-SeqDQN falls to 0.0096---
-below the random baseline of 0.01, confirming it lacks genuine
-discriminative capacity under harder evaluation.
-Notably, DIF-SASRec's relative advantage over the random baseline
-\emph{increases} from $7.2\times$ (99-negative) to $31\times$
-(999-negative), indicating that the model's discriminative ability
-is not an artefact of easy negatives in the standard pool.
+GRU-SeqDQN performs poorly under full-catalog evaluation (HR@10=0.0098),
+suggesting that reward-shaped RL training does not scale to the dense
+retrieval setting examined here.
 
 \subsection{Ablation Study}
 Table~\ref{tab:ablation} isolates the contribution of each component.

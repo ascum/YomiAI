@@ -2,23 +2,150 @@
 \label{sec:overview}
 
 Figure~\ref{fig:arch} illustrates the overall architecture.
-The system is implemented as a FastAPI service with three layers:
+The system is implemented as a FastAPI\footnote{\url{https://fastapi.tiangolo.com/}} service with three layers:
 an \emph{API layer} (routes for search, recommend, interact, profile),
 a \emph{service layer} (business logic for both modes), and a
 \emph{repository layer} (FAISS indices, MongoDB, Cleora embeddings).
 
 \begin{figure}[t]
-  \centering
-  % TODO: replace the placeholder below with your actual diagram
-  % Export your architecture diagram as figures/architecture_overview.pdf
-  \fbox{\parbox[c][6cm][c]{0.95\linewidth}{\centering
-    \textit{[Architecture diagram placeholder]}\\[4pt]
-    \small Active Search (Mode~1): Query $\to$ BGE-M3 / CLIP $\to$ RRF $\to$ Results\\[2pt]
-    \small Passive Rec (Mode~2): Profile $\to$ Cleora / DIF-SASRec $\to$ Ranked list
-  }}
-  \caption{Dual-mode system architecture. Solid arrows denote the active
-           search path; dashed arrows denote passive recommendation pipelines.}
-  \label{fig:arch}
+\centering
+\makebox[\textwidth][c]{%
+\resizebox{1.25\textwidth}{!}{%
+\begin{tikzpicture}[
+  >=Stealth,
+  every path/.style={line width=0.6pt},
+  %-- box base
+  box/.style={
+    draw, rounded corners=2pt,
+    minimum height=0.50cm,
+    align=center, inner sep=3pt,
+    font=\footnotesize
+  },
+  %-- colour variants
+  inp/.style  = {box, fill=gray!18,   minimum width=2.1cm},
+  proc/.style = {box, fill=cyan!10,   minimum width=2.5cm},
+  ml/.style   = {box, fill=orange!18, minimum width=2.1cm},
+  idx/.style  = {box, fill=teal!10,   minimum width=1.55cm},
+  out/.style  = {box, fill=yellow!28, minimum width=2.5cm,
+                 font=\footnotesize\bfseries},
+  %-- arrows
+  arr/.style  = {->},
+  darr/.style = {->, dashed, gray!65},
+  %-- header label
+  hdr/.style  = {font=\small\bfseries},
+]
+
+%════════════════════════════════════════════════════════
+%  MODE 1 — ACTIVE SEARCH
+%════════════════════════════════════════════════════════
+
+%-- background zone
+\begin{pgfonlayer}{background}
+  \fill[blue!4, rounded corners=5pt]
+    (-7.60, -5.80) rectangle (-0.60, 0.65);
+\end{pgfonlayer}
+
+\node[hdr] at (-4.10, 0.95) {Mode 1: Active Search};
+
+%-- inputs
+\node[inp] (tq)  at (-5.00,  0)    {Text query};
+\node[inp] (iq)  at (-2.60,  0)    {Image query};
+
+%-- normalisation (text only) / CLIP encoding (image only)
+\node[proc, minimum width=2.3cm] (nllb) at (-5.00, -0.95)
+  {NLLB-200\\[-2pt]{\tiny(non-EN only)}};
+\node[ml]  (clp) at (-2.60, -0.95)  {CLIP encode};
+
+%-- text dense encoding
+\node[ml]  (bge) at (-5.00, -1.95)  {BGE-M3 encode};
+
+%-- retrieval layer
+\node[idx] (ftx) at (-5.90, -3.10)  {FAISS\\text};
+\node[idx] (tan) at (-4.10, -3.10)  {Tantivy\\BM25};
+\node[idx] (fim) at (-2.60, -1.95)  {FAISS\\image};
+
+%-- fusion
+\node[proc, minimum width=4.4cm] (rrf) at (-4.20, -4.20)
+  {Reciprocal Rank Fusion \small($k{=}60$)};
+
+%-- output
+\node[out,  minimum width=3.6cm] (sr)  at (-4.20, -5.30)
+  {Search Results};
+
+%-- Mode 1 arrows
+\draw[arr] (tq)  -- (nllb);
+\draw[arr] (iq)  -- (clp);
+\draw[arr] (nllb) -- (bge);
+\draw[arr] (bge.south) -- (ftx.north);
+\draw[arr] (bge.south) -- (tan.north);
+\draw[arr] (clp.south) -- (fim.north);
+\draw[arr] (ftx.south) -- (rrf.north -| ftx);
+\draw[arr] (tan.south) -- (rrf.north -| tan);
+\draw[arr] (fim.south) -- (rrf.north -| fim);
+\draw[arr] (rrf) -- (sr);
+
+%════════════════════════════════════════════════════════
+%  MODE 2 — PASSIVE RECOMMENDATION
+%════════════════════════════════════════════════════════
+
+%-- background zone
+\begin{pgfonlayer}{background}
+  \fill[green!4, rounded corners=5pt]
+    (0.10, -5.80) rectangle (6.30, 0.65);
+\end{pgfonlayer}
+
+\node[hdr] at (3.20, 0.95) {Mode 2: Passive Recommendation};
+
+%-- shared user profile
+\node[proc, minimum width=5.0cm, fill=violet!10] (up) at (3.20,  -0.25)
+  {User Profile \small(MongoDB)};
+
+%-- Pipeline A
+\node[font=\small\itshape, text=gray!70] at (1.70, -0.87) {Pipeline A};
+\node[ml]  (cle) at (1.70, -1.95)  {Cleora FAISS};
+\node[proc](vt1) at (1.70, -3.10)  {Content veto};
+\node[out, minimum width=2.4cm] (pab) at (1.70, -4.20)
+  {\emph{People Also Buy}};
+
+%-- Pipeline B
+\node[font=\small\itshape, text=gray!70] at (4.70, -0.87) {Pipeline B};
+\node[ml]  (knn) at (4.70, -1.95)  {HNSW KNN};
+\node[ml]  (dfs) at (4.70, -3.10)  {DIF-SASRec};
+\node[out, minimum width=2.4cm] (yml) at (4.70, -4.20)
+  {\emph{You Might Like}};
+
+%-- Mode 2 arrows
+\draw[arr] (up.south -| cle) -- (cle.north);
+\draw[arr] (up.south -| knn) -- (knn.north);
+\draw[arr] (cle) -- (vt1);
+\draw[arr] (vt1) -- (pab) node[midway, right, font=\tiny] {$\cos\geq 0.3$};
+\draw[arr] (knn) -- (dfs);
+\draw[arr] (dfs) -- (yml);
+
+%════════════════════════════════════════════════════════
+%  DASHED FEEDBACK: outputs update the User Profile
+%════════════════════════════════════════════════════════
+
+%-- Pipeline A result → profile
+\draw[darr] (pab.west) -- +(-0.30, 0) |- (up.west);
+
+%-- Pipeline B result → profile
+\draw[darr] (yml.east) -- +(+0.40, 0) |- (up.east);
+
+%-- Search results → profile (routed far-left margin, passing below titles)
+\draw[darr] (sr.east) -| (-1.0, 0.35) -| (up.north);
+
+\end{tikzpicture}%
+}% end \resizebox
+}% end \makebox
+\caption{Dual-mode system architecture.
+  \emph{Solid} arrows show the inference-time data flow.
+  \emph{Dashed} arrows show profile update feedback after each
+  user interaction, shared across both modes.
+  Mode~1 (left, \colorbox{blue!4}{\strut blue zone}) processes
+  active queries; Mode~2 (right, \colorbox{green!4}{\strut green zone})
+  generates proactive recommendations from the User Profile.}
+\label{fig:arch}
 \end{figure}
 
 \subsection{Data Layer}
@@ -28,7 +155,7 @@ indexed in HNSW-based FAISS structures for approximate nearest-neighbor
 search.
 Behavioral embeddings (1024-dim, Cleora) cover 375k items with co-purchase
 history.
-A Tantivy inverted index supports BM25 keyword retrieval.
+A Tantivy\footnote{\url{https://github.com/quickwit-oss/tantivy}} inverted index supports BM25~\cite{robertson1994okapi} keyword retrieval.
 
 \subsection{User Profile}
 Each user maintains a persistent MongoDB document storing:

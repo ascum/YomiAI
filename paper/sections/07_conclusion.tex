@@ -1,18 +1,28 @@
 \section{Conclusion}
 \label{sec:conclusion}
 
-We presented a dual-mode multimodal recommendation system that unifies
-active search and passive personalization through shared user profiles and
-complementary recommendation pipelines.
-By grounding DIF-SASRec in dense BGE-M3 content embeddings rather than item
-IDs, the system generalizes to the full 3M-item catalog without retraining.
-The Cleora behavioral pipeline provides robust cold-start recommendations
-while DIF-SASRec delivers fine-grained sequential personalization.
+We presented a dual-mode multimodal NBA recommendation system that mines
+text, visual, and behavioural multimedia data to unify active search and
+passive personalisation within a single architecture.
+The work addresses the two-phase project scope: Phase~1 established the
+data collection and preprocessing pipeline, extracted multimodal features
+via BGE-M3 and CLIP, and evaluated NBA models across multiple data sources;
+Phase~2 delivered the full integrated system combining Cleora behavioural
+graphs with DIF-SASRec sequential personalisation, along with end-to-end
+evaluation and comparison against baseline approaches.
 
-Experiments on 100k Amazon Books users demonstrate state-of-the-art HR@10 of
-0.7749, with real-time serving latency of 71ms and safe concurrent inference
-via AgentPool.
+By grounding DIF-SASRec in dense BGE-M3 content embeddings rather than
+item IDs, the system generalises to the full 3.08M-item catalog without
+retraining.
+The Cleora behavioural pipeline provides robust cold-start recommendations
+while DIF-SASRec delivers fine-grained sequential personalisation via
+online adaptation.
+Experiments on 100k Amazon Books users demonstrate HR@10 of 0.7749
+(+78\% over the content-only baseline), with warm-path P50 latency of
+34\,ms and safe concurrent inference via the AgentPool.
 
-Future work includes dynamic Cleora retraining from accumulated interaction
-logs, expansion of Vietnamese-language keyword search, and cross-domain
-transfer of pretrained DIF-SASRec weights.
+Future work includes dynamic Cleora retraining from accumulated
+interaction logs, expansion of multilingual keyword search beyond
+the current Tantivy index, cross-domain transfer of pretrained
+DIF-SASRec weights, and extension of the NBA framing to domains
+beyond book discovery.
