@@ -1,0 +1,109 @@
+\section{Methodology}
+\label{sec:method}
+
+\subsection{Mode 1: Active Search}
+\label{ssec:active}
+
+Given a user query consisting of text $q_t$ and optionally an image $q_i$,
+the system produces a ranked list via:
+
+\paragraph{Multilingual query normalization.}
+The system supports queries in 19 languages: Vietnamese, French, German,
+Spanish, Chinese, Japanese, Korean, Arabic, Portuguese, Russian, Italian,
+Thai, Indonesian, Dutch, Polish, Turkish, Ukrainian, Hindi, and Swedish.
+Lingua detects the source language in under 1\,ms.
+Non-English queries are translated to English by NLLB-200-Distilled-600M~\cite{costa2022nllb}
+using a two-tier strategy: a greedy pass ($\text{num\_beams}=1$, $\sim$16\,ms)
+followed by a beam-search fallback ($\text{num\_beams}=4$, $\sim$30\,ms) only
+when the greedy output retains untranslated source tokens.
+English queries and unsupported languages bypass translation entirely.
+All translation results are stored in an in-process LRU cache (capacity 2\,048
+entries); repeat queries cost 0\,ms regardless of language.
+
+\paragraph{Encoding.}
+Text query: $\mathbf{e}_t = \text{BGE-M3}(q_t) \in \mathbb{R}^{1024}$.
+Image query: $\mathbf{e}_i = \text{CLIP}(q_i) \in \mathbb{R}^{512}$.
+BGE-M3 inference is wrapped in an LRU cache (capacity 4\,096 entries) keyed
+on the translated query string, so repeated or structurally identical queries
+skip GPU inference entirely and are served from CPU RAM in under 0.1\,ms.
+
+\paragraph{Retrieval.}
+FAISS~\cite{johnson2019faiss} HNSW search retrieves top-$K$ candidates from each index independently,
+yielding ranked lists $L_t$ and $L_i$.
+A Tantivy BM25 search over tokenized titles and descriptions yields $L_k$.
+
+\paragraph{Fusion.}
+Reciprocal Rank Fusion (RRF)~\cite{cormack2009rrf} combines the three lists:
+\begin{equation}
+  s_{\text{RRF}}(d) = \sum_{r \in \{L_t, L_i, L_k\}}
+  \frac{1}{k + \text{rank}_r(d)}, \quad k = 60.
+  \label{eq:rrf}
+\end{equation}
+The top-$N$ items by $s_{\text{RRF}}$ are returned with metadata.
+
+% ---
+
+\subsection{Mode 2: Passive Recommendation}
+\label{ssec:passive}
+
+\subsubsection{Pipeline A — Behavioral Similarity (People Also Buy).}
+\label{sssec:pipelineA}
+
+\begin{enumerate}
+  \item \textbf{Behavioral scouting.} The user's 5 most recent interactions
+        seed a multi-query FAISS search in Cleora space, yielding 50 candidates.
+  \item \textbf{Content veto.} Each candidate is scored against the user's
+        aggregated BGE-M3 and CLIP profile vectors.
+        Candidates satisfying
+        $\max(\cos(\mathbf{e}^{\text{bge}}_c, \mathbf{p}^{\text{bge}}),\,
+              \cos(\mathbf{e}^{\text{clip}}_c, \mathbf{p}^{\text{clip}}))
+         < 0.3$
+        are discarded.
+  \item \textbf{Ranking.} Survivors are ranked by cosine similarity to the
+        aggregated profile and the top-$K$ are returned.
+\end{enumerate}
+
+\subsubsection{Pipeline B — Sequential Personalization (You Might Like).}
+\label{sssec:pipelineB}
+
+\begin{enumerate}
+  \item \textbf{Candidate generation.} HNSW search on BGE-M3 embeddings of
+        the user's recent items retrieves 200 candidates.
+  \item \textbf{Content veto.} Same threshold as Pipeline A.
+  \item \textbf{Sequential scoring.} DIF-SASRec scores each candidate as the
+        predicted next item.
+\end{enumerate}
+
+% ---
+
+\subsection{DIF-SASRec Model}
+\label{ssec:difsasrec}
+
+We adapt DIF-SASRec~\cite{xie2022difsr} to operate in a content-ID-free setting.
+Each item is represented by its BGE-M3 embedding projected to 512 dimensions,
+eliminating ID lookup tables.
+
+\paragraph{Architecture.}
+The model consists of:
+(i)~a linear content projection $\mathbf{W}_c \in \mathbb{R}^{1024 \times 512}$,
+(ii)~4 transformer blocks with causal self-attention,
+(iii)~a dual-stream attention mechanism with separate Q/K heads for content
+and category, fused by a learnable scalar $\alpha$, and
+(iv)~a dot-product prediction head.
+Total parameters: 12.4M.
+
+\paragraph{Training.}
+We train on 100k users from Amazon Books with an 80/20 temporal split.
+Sampled softmax loss with 512 negatives per step scales to the 3M-item catalog.
+An auxiliary category classification loss with weight $\lambda = 0.1$
+stabilizes genre-level understanding.
+We use AdamW ($\text{lr}=10^{-3}$, $\text{wd}=0.01$) with linear warmup
+(2 epochs) and cosine decay over 30 epochs, batch size 2048 with AMP float16.
+
+\paragraph{Online adaptation.}
+At inference, each user's agent fine-tunes on a single interaction step via
+back-propagation before each recommendation, enabling real-time personalization
+without retraining the full model.
+An \textbf{AgentPool} of 8 independent model instances handles concurrent
+requests safely, each holding a pretrained weight snapshot in CPU RAM for
+cold-start initialization.

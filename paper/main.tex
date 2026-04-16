@@ -1,0 +1,60 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%  IAAA 2026 — Springer LNNS (svproc)
+%  Dual-Mode Multimodal Book Recommendation System
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\documentclass{svproc}
+
+% ---- Core packages ----
+\usepackage{url}
+\def\UrlFont{\rmfamily}
+
+\usepackage{graphicx}           % \includegraphics
+\usepackage{booktabs}           % \toprule / \midrule / \bottomrule
+\usepackage{amsmath}            % align, equation*
+\usepackage{amssymb}
+\usepackage{multirow}           % table row-span
+\usepackage{xcolor}
+\usepackage{hyperref}           % clickable refs (comment out for camera-ready if required)
+\usepackage{microtype}          % better line breaking
+
+% ---- Path for figures ----
+\graphicspath{{figures/}}
+
+% -------------------------------------------------------
+\begin{document}
+\mainmatter
+
+\title{A Dual-Mode Multimodal Recommendation System\\
+       for Book Discovery via Behavioral and Sequential Modeling}
+
+\titlerunning{Dual-Mode Multimodal Book Recommendation}
+
+\author{[Author Name]\inst{1} \and [Co-Author Name]\inst{1}}
+
+\authorrunning{[Author et al.]}
+
+\institute{
+  Faculty of Computer Science and Engineering,\\
+  Ho Chi Minh City University of Technology (HCMUT), VNU-HCM, Vietnam\\
+  \email{\{[student-id]\}@hcmut.edu.vn}
+}
+
+\maketitle
+
+% ---- Abstract ----
+\input{sections/00_abstract}
+
+% ---- Body sections ----
+\input{sections/01_introduction}
+\input{sections/02_related_work}
+\input{sections/03_system_overview}
+\input{sections/04_methodology}
+\input{sections/05_experiments}
+\input{sections/06_results}
+\input{sections/07_conclusion}
+
+% ---- Bibliography ----
+\bibliographystyle{splncs03_unsrt}
+\bibliography{references}
+
+\end{document}

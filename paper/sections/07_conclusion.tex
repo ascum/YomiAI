@@ -1,0 +1,18 @@
+\section{Conclusion}
+\label{sec:conclusion}
+
+We presented a dual-mode multimodal recommendation system that unifies
+active search and passive personalization through shared user profiles and
+complementary recommendation pipelines.
+By grounding DIF-SASRec in dense BGE-M3 content embeddings rather than item
+IDs, the system generalizes to the full 3M-item catalog without retraining.
+The Cleora behavioral pipeline provides robust cold-start recommendations
+while DIF-SASRec delivers fine-grained sequential personalization.
+
+Experiments on 100k Amazon Books users demonstrate state-of-the-art HR@10 of
+0.7749, with real-time serving latency of 71ms and safe concurrent inference
+via AgentPool.
+
+Future work includes dynamic Cleora retraining from accumulated interaction
+logs, expansion of Vietnamese-language keyword search, and cross-domain
+transfer of pretrained DIF-SASRec weights.

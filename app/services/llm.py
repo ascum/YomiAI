@@ -6,6 +6,8 @@ Extracted from api.py (_ensure_llm_loaded, ask_llm endpoint logic).
 import functools
 import json
 import logging
+import time
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -150,8 +152,28 @@ def fetch_wikipedia_summary(title: str, author: str = "") -> str:
 
 _BOOKS_FIELDS = "items(volumeInfo(title,subtitle,description,authors))"
 
+# Rate-limiting state for Google Books
+_books_last_call: float = 0.0          # epoch time of last successful request
+_books_disabled_until: float = 0.0     # skip all requests until this epoch time
+_BOOKS_MIN_INTERVAL: float = 1.0       # minimum seconds between requests
+_BOOKS_COOLDOWN: float = 120.0         # seconds to back off after a 429
+
+
 def _books_request(raw_query: str) -> list:
     """Run one Google Books search using proper query operators. Returns items list."""
+    global _books_last_call, _books_disabled_until
+
+    # Skip entirely if we're in a 429 cooldown window
+    if time.time() < _books_disabled_until:
+        remaining = int(_books_disabled_until - time.time())
+        log.debug(f"[Books] Rate-limit cooldown active, skipping ({remaining}s left)")
+        raise urllib.error.HTTPError(None, 429, "Cooldown active", {}, None)
+
+    # Throttle: enforce minimum gap between requests
+    gap = time.time() - _books_last_call
+    if gap < _BOOKS_MIN_INTERVAL:
+        time.sleep(_BOOKS_MIN_INTERVAL - gap)
+
     params = urllib.parse.urlencode({
         "q":           raw_query,
         "maxResults":  "5",
@@ -160,10 +182,17 @@ def _books_request(raw_query: str) -> list:
         "fields":      _BOOKS_FIELDS,
     })
     url = f"https://www.googleapis.com/books/v1/volumes?{params}"
-    log.info(f"[Books] GET {url}")
+    log.debug(f"[Books] GET {url}")
     req = urllib.request.Request(url, headers={"User-Agent": "NBA-AI-Assistant/1.0"})
-    with urllib.request.urlopen(req, timeout=3.0) as resp:
-        return json.loads(resp.read()).get("items", [])
+    try:
+        with urllib.request.urlopen(req, timeout=3.0) as resp:
+            _books_last_call = time.time()
+            return json.loads(resp.read()).get("items", [])
+    except urllib.error.HTTPError as e:
+        if e.code == 429:
+            _books_disabled_until = time.time() + _BOOKS_COOLDOWN
+            log.warning(f"[Books] 429 received — pausing Google Books for {int(_BOOKS_COOLDOWN)}s")
+        raise
 
 
 def _fetch_google_books(title: str, author: str) -> str:
@@ -228,6 +257,11 @@ def fetch_book_context(title: str, author: str = "") -> str:
         if google_result:
             return google_result
         log.debug("[Books] No Google Books result, falling back to Wikipedia…")
+    except urllib.error.HTTPError as e:
+        if e.code == 429:
+            log.info(f"[Books] Rate-limited for '{title}', using Wikipedia fallback")
+        else:
+            log.warning(f"[Books] Google Books HTTP {e.code} for '{title}': {e}")
     except Exception as e:
         log.warning(f"[Books] Google Books fetch failed for '{title}': {e}")
 

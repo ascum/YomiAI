@@ -509,6 +509,12 @@ def parse_args():
                    help="Limit eval users for speed (default: all 20k)")
     p.add_argument("--no-history", action="store_true",
                    help="Skip saving result to evaluation/results_history.json")
+    p.add_argument("--seed", type=int, default=None,
+                   help="Random seed for negative pool sampling (default: unseeded)")
+    p.add_argument("--dif-only", action="store_true",
+                   help="Only evaluate DIF-SASRec — skip Content-KNN and GRU-SeqDQN")
+    p.add_argument("--pretrained-path", type=str, default=None,
+                   help="Path to DIF-SASRec checkpoint (default: data/dif_sasrec_pretrained.pt)")
     return p.parse_args()
 
 
@@ -519,11 +525,17 @@ def main():
     run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
     logger, log_path = setup_logger(run_id)
 
+    if args.seed is not None:
+        random.seed(args.seed)
+        np.random.seed(args.seed)
+
     print(bold(f"\n{'═' * 76}"))
     print(bold(f"  Recommendation Evaluation   run_id={cyan(run_id)}"))
     print(bold(f"{'═' * 76}"))
     print(f"  Log: {dim(log_path)}")
-    logger.info(f"Run start  mode={args.mode}  negatives={args.negatives}  k={args.k}")
+    if args.seed is not None:
+        print(f"  Seed: {args.seed}")
+    logger.info(f"Run start  mode={args.mode}  negatives={args.negatives}  k={args.k}  seed={args.seed}")
 
     # ── Load FAISS + encoders ─────────────────────────────────────────────────
     print(f"\n{bold('Loading FAISS indices ...')}")
@@ -541,7 +553,7 @@ def main():
     else:
         cat_encoder.build_from_parquet(os.path.join(DATA_DIR, "item_metadata.parquet"))
 
-    pretrained_path = os.path.join(DATA_DIR, "dif_sasrec_pretrained.pt")
+    pretrained_path = args.pretrained_path or os.path.join(DATA_DIR, "dif_sasrec_pretrained.pt")
     if os.path.exists(pretrained_path):
         print(f"  DIF-SASRec checkpoint: {green('found')} ({pretrained_path})")
     else:
@@ -564,14 +576,18 @@ def main():
     )
 
     # ── Build strategies ─────────────────────────────────────────────────────
-    strategies = [
-        ContentBaseline(retriever, emb_cache),
-        GRUSeqDQNStrategy(retriever, emb_cache),
-        DIFSASRecStrategy(
-            retriever, cat_encoder, emb_cache,
-            pretrained_path=pretrained_path if os.path.exists(pretrained_path) else None,
-        ),
-    ]
+    dif_strategy = DIFSASRecStrategy(
+        retriever, cat_encoder, emb_cache,
+        pretrained_path=pretrained_path if os.path.exists(pretrained_path) else None,
+    )
+    if args.dif_only:
+        strategies = [dif_strategy]
+    else:
+        strategies = [
+            ContentBaseline(retriever, emb_cache),
+            GRUSeqDQNStrategy(retriever, emb_cache),
+            dif_strategy,
+        ]
 
     # ── Print run header ─────────────────────────────────────────────────────
     print_header(args.mode, args.negatives, args.k, n_eval)

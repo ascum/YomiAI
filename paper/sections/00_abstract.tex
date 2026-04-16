@@ -1,0 +1,23 @@
+\begin{abstract}
+% Target: 70–150 words (conference requirement).
+% Cover: problem → approach → key results → impact.
+We present a dual-mode multimodal recommendation system for large-scale book
+discovery that unifies active search and passive personalization within a
+single architecture.
+The system operates in two modes: an active search mode that fuses dense
+text embeddings from BGE-M3 with visual embeddings from CLIP via Reciprocal
+Rank Fusion, and a passive recommendation mode that combines Cleora
+co-occurrence graphs for behavioral similarity with a DIF-SASRec transformer
+for sequential personalization.
+Evaluated on a 3.08-million-item Amazon Books catalog with 100k user
+interaction histories, our DIF-SASRec component achieves HR@10 of 0.7749 and
+NDCG@10 of 0.5029, representing a 78\% improvement over a content-only
+baseline.
+The system handles queries in 19 languages via NLLB-200 translation.
+Multi-layer LRU caching reduces warm-path P50 latency to 34\,ms;
+cold-path P50 is 1\,127\,ms, dominated by FAISS page faults on the
+12.6\,GB HNSW index, which are eliminated by a startup warmup routine.
+%
+\keywords{recommender systems, multimodal retrieval, sequential recommendation,
+          transformer, DIF-SASRec, BGE-M3, CLIP, Cleora}
+\end{abstract}

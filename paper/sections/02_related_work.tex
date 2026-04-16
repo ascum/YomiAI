@@ -1,0 +1,32 @@
+\section{Related Work}
+\label{sec:related}
+
+\subsection{Sequential Recommendation}
+SASRec~\cite{kang2018self} introduced self-attention for modeling sequential user behavior,
+outperforming RNN-based methods.
+DIF-SASRec~\cite{xie2022difsr} decoupled item ID, attribute, and content features into
+separate attention streams, enabling fine-grained preference modeling.
+We adopt DIF-SASRec and replace its original ID-based item representation
+with dense BGE-M3 content embeddings, eliminating the need for ID lookup
+tables and enabling zero-shot generalization to unseen items.
+
+\subsection{Multimodal Retrieval}
+CLIP~\cite{radford2021clip} demonstrated strong image--text alignment through contrastive
+pre-training at scale.
+BGE-M3~\cite{chen2024bgem3} provides multilingual, multi-granularity dense retrieval.
+Prior work on multimodal recommendation combines visual and textual
+signals but rarely integrates them with behavioral graph embeddings.
+
+\subsection{Graph-Based Collaborative Filtering}
+Cleora~\cite{cleora2021} learns item embeddings via Markov-chain propagation over
+co-occurrence graphs, producing stable, high-quality behavioral representations
+without explicit user--item matrix factorization.
+Unlike neural collaborative filtering methods, Cleora embeddings are
+deterministic and require no GPU for training, making them suitable for
+catalog-scale deployment.
+
+\subsection{Hybrid Systems}
+% Briefly contrast with two-tower, BERT4Rec, LightGCN, etc.
+LightGCN~\cite{he2020lightgcn} provides a strong graph-based collaborative filtering baseline but
+does not natively handle multimodal queries or the active/passive mode
+distinction central to our design.

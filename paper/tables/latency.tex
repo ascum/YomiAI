@@ -1,0 +1,44 @@
+\begin{table}[t]
+\caption{End-to-end latency for active search on an NVIDIA RTX~5060~Ti.
+         \emph{Cold} = unique query, FAISS index not in OS page cache
+         (measured with 35 unique queries, 1 run each).
+         \emph{Warm} = repeated query, FAISS paged into OS RAM and
+         LRU caches populated (run\_021, 30 observations).
+         $\dagger$~Translation applies only to non-English input.}
+\label{tab:latency}
+\centering
+\begin{tabular}{lrrrr}
+\toprule
+\multirow{2}{*}{\textbf{Component}}
+  & \multicolumn{2}{c}{\textbf{Cold (unique query)}}
+  & \multicolumn{2}{c}{\textbf{Warm (cached)}} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+  & P50 (ms) & P95 (ms) & P50 (ms) & P95 (ms) \\
+\midrule
+NLLB translation$^\dagger$  & 156  & 479  & $<$2   & $<$3  \\
+BGE-M3 encoding (FP16)      & 40   & 70   & $<$1   & $<$1  \\
+FAISS HNSW text search      & 906  & 1146 & 2      & 3     \\
+Tantivy BM25 keyword search & 22   & 31   & 6      & 12    \\
+RRF fusion + metadata fetch & 5    & 8    & 3      & 5     \\
+\midrule
+\textbf{EN query total}     & \textbf{1\,096} & \textbf{1\,568} & \textbf{17} & \textbf{24} \\
+Non-EN query total          & 1\,281          & 1\,720          & 18          & 26          \\
+\midrule
+E2E wall clock (EN)         & 1\,127          & 1\,609          & 34          & 46          \\
+\midrule
+Flat-index baseline         & 4\,200          & ---             & ---         & ---         \\
+\bottomrule
+\end{tabular}
+\smallskip
+
+\noindent\footnotesize
+\textbf{Cold vs.\ warm gap:} The 12.6\,GB BGE-M3 HNSW index is the primary
+source of cold-start latency — FAISS page-faults on the index graph nodes
+contribute $\sim$900\,ms P50 when the index is not resident in OS page cache.
+Once paged, the same search costs 2\,ms.
+Three in-process LRU caches (translation: 2\,048 entries; text encoding:
+4\,096 entries; user profiles: in-process dict) eliminate GPU invocation
+entirely for repeated queries, reducing warm-path P50 to $\sim$17\,ms.
+A server-startup warmup routine pre-issues representative queries to page
+the HNSW index into RAM before serving live traffic.
+\end{table}

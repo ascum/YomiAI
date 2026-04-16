@@ -14,3 +14,4 @@
 {"run_id": "run_014", "stage": "post_quality_gate", "timestamp": "20260410_122345", "file": "run_014_post_quality_gate.json", "key_metrics": {"translate_ms": 77.15, "encode_text_ms": 39.5, "total_ms": 380.11, "e2e_wall_clock_ms": 394.85}}
 {"run_id": "run_015", "stage": "post_quality_gate", "timestamp": "20260410_122400", "file": "run_015_post_quality_gate.json", "key_metrics": {"translate_ms": 1.33, "encode_text_ms": 34.04, "total_ms": 56.1, "e2e_wall_clock_ms": 72.73}}
 {"run_id": "run_016", "stage": "post_translation_improvement", "timestamp": "20260410_122913", "file": "run_016_post_translation_improvement.json", "key_metrics": {"translate_ms": 1.21, "encode_text_ms": 34.38, "total_ms": 56.44, "e2e_wall_clock_ms": 74.05}}
+{"run_id": "run_022", "stage": "cold_cache", "timestamp": "20260415_014254", "file": "run_022_cold_cache.json", "key_metrics": {"translate_ms": 185.25, "encode_text_ms": 37.16, "total_ms": 1186.66, "e2e_wall_clock_ms": 1204.11}}

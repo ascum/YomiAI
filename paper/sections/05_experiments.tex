@@ -1,0 +1,48 @@
+\section{Experimental Setup}
+\label{sec:exp}
+
+\subsection{Dataset}
+We use the Amazon Reviews 2023 Books subset~\cite{hou2024amazon}.
+After filtering users with fewer than 5 interactions, the dataset contains
+100k users, 375k items with behavioral (Cleora) coverage, and 3.08M items
+in the full catalog.
+The average interaction sequence length is 33.5 clicks per user.
+We apply a temporal 80/20 split: the last item in each user's history is
+held out for testing; the remaining interactions form the training set.
+
+\subsection{Evaluation Metrics}
+We report Hit Rate at rank 10 (HR@10) and Normalized Discounted Cumulative
+Gain at rank 10 (NDCG@10) on the held-out items.
+Following the standard protocol used in SASRec~\cite{kang2018self} and
+DIF-SASRec~\cite{xie2022difsr}, each held-out item is ranked against
+99 randomly sampled negative items (100 candidates total),
+yielding a random-chance baseline of HR@10 = 0.10.
+We additionally evaluate all models under a stricter 999-negative
+protocol (1\,000 candidates; random baseline HR@10 = 0.01) to assess
+robustness to pool size (Section~\ref{ssec:robustness}).
+To quantify result stability, we report the mean and standard deviation
+of HR@10 and NDCG@10 across five independent evaluations with different
+random negative pools (same trained checkpoint, different negative draws).
+Note that DIF-SASRec is trained with 512 sampled-softmax negatives per
+step—a harder discrimination task than the 99-negative evaluation pool—so
+the evaluation protocol is not a ceiling on what the model has learned to
+distinguish.
+
+\subsection{Baselines}
+\input{tables/baselines}
+
+\subsection{Implementation Details}
+All experiments are conducted on a single NVIDIA GPU with 24\,GB VRAM.
+DIF-SASRec is trained with AdamW ($\text{lr}=10^{-3}$, weight decay $0.01$),
+linear warm-up over 2 epochs, cosine decay to $10^{-5}$ over 30 epochs,
+batch size 2\,048, and mixed-precision (AMP float16).
+Sampled softmax uses 512 random negatives drawn fresh each epoch.
+The category auxiliary loss weight is $\lambda = 0.1$.
+
+FAISS HNSW indices are built with $M=32$ bidirectional links and
+$\text{ef\_construction}=200$; query-time $\text{ef\_search}=128$.
+Cleora behavioral embeddings use 3 Markov propagation steps on the
+co-purchase graph.
+BGE-M3 and CLIP inference run in FP16 on GPU; Tantivy BM25 runs on CPU.
+The AgentPool allocates 8 independent DIF-SASRec instances, each occupying
+148\,MB VRAM, for a total pool footprint of 1.18\,GB.

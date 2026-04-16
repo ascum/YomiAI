@@ -1,0 +1,127 @@
+\section{Results}
+\label{sec:results}
+
+\subsection{Sequential Recommendation Performance}
+Table~\ref{tab:main_results} reports HR@10 and NDCG@10 under the
+sampled evaluation protocol (99 random negatives).
+
+\input{tables/main_results}
+
+Our DIF-SASRec variant achieves HR@10 of \textbf{0.7244 $\pm$ 0.0024}
+and NDCG@10 of \textbf{0.4441 $\pm$ 0.0017} (mean $\pm$ std over 5
+independent negative draws, 99-negative protocol).
+This represents a $+66\%$ relative improvement in HR@10 over the
+Content-KNN baseline (0.4352), confirming that sequential modeling
+captures preference dynamics that pure nearest-neighbor retrieval cannot.
+The improvement over SASRec with item-ID embeddings ($+24\%$ HR@10)
+demonstrates the benefit of grounding sequence models in dense content
+representations: ID-based embeddings are limited to items seen during
+training, whereas BGE-M3 embeddings generalize across all 3.08M catalog
+items without retraining.
+GRU-SeqDQN performs poorly under sampled evaluation (HR@10=0.0098),
+falling below the random-chance baseline of 0.10, suggesting that
+reward-shaped RL training does not transfer to the dense retrieval
+setting examined here.
+
+\subsection{Robustness Under Stricter Evaluation}
+\label{ssec:robustness}
+
+Table~\ref{tab:robustness} repeats the comparison under a 999-negative
+protocol (1\,000 candidates; random-chance baseline HR@10 = 0.01),
+ten times harder than the standard setting.
+SASRec (item-ID) is excluded as its inference relies on a closed item
+vocabulary incompatible with the dense-retrieval scoring used here.
+
+\input{tables/robustness_results}
+
+DIF-SASRec remains the strongest model at this harder setting
+(HR@10 = 0.3142, NDCG@10 = 0.2209).
+Content-KNN drops to 0.2122 HR@10, and GRU-SeqDQN falls to 0.0096---
+below the random baseline of 0.01, confirming it lacks genuine
+discriminative capacity under harder evaluation.
+Notably, DIF-SASRec's relative advantage over the random baseline
+\emph{increases} from $7.2\times$ (99-negative) to $31\times$
+(999-negative), indicating that the model's discriminative ability
+is not an artefact of easy negatives in the standard pool.
+
+\subsection{Ablation Study}
+Table~\ref{tab:ablation} isolates the contribution of each component.
+
+\input{tables/ablation}
+
+\paragraph{Category auxiliary loss.}
+Removing the auxiliary category classification head reduces HR@10 by
+$1.8\%$, indicating that genre-level supervision provides a useful
+inductive bias for distinguishing within-sequence preference drift.
+
+\paragraph{Content veto.}
+Disabling the cosine-similarity veto ($\tau=0.3$) in Pipeline~B reduces
+HR@10 by $2.1\%$.
+Without the veto, DIF-SASRec scores candidates that are co-purchased but
+semantically unrelated to the user's latent interests, diluting
+recommendation precision.
+
+\paragraph{Online adaptation.}
+The largest single drop ($-7.9\%$ HR@10) comes from removing the
+per-user fine-tuning step.
+This confirms that the pretrained model alone under-fits individual
+preference trajectories; the online gradient step is the primary driver
+of personalization beyond the pretrained prior.
+
+\paragraph{Dual-stream attention.}
+Replacing the decoupled content/category attention with a single merged
+stream reduces HR@10 by $4.6\%$, validating that keeping textual and
+categorical signals in separate attention heads prevents one modality
+from dominating the other.
+
+\subsection{Latency Analysis}
+Table~\ref{tab:latency} reports the end-to-end latency breakdown measured
+under two conditions on an NVIDIA RTX~5060~Ti: (i)~\emph{cold}, using 35
+unique queries each executed exactly once so every observation is a
+guaranteed LRU and FAISS page-cache miss, and (ii)~\emph{warm}, using
+repeated queries after the server has been running long enough for the
+HNSW index to be resident in OS page cache and the LRU caches to be
+populated.
+
+\input{tables/latency}
+
+\paragraph{Cold path.}
+On a unique query with no prior caching, P50 end-to-end latency is
+\textbf{1\,127\,ms} for English and 1\,281\,ms for non-English input.
+The dominant component is FAISS HNSW text search (P50~906\,ms), which
+incurs OS page faults on the 12.6\,GB BGE-M3 HNSW index when graph nodes
+are not resident in RAM.
+BGE-M3 encoding contributes 40\,ms P50; NLLB translation adds 156\,ms
+P50 only for non-English queries.
+The flat-index baseline (4\,200\,ms) used prior to HNSW migration is still
+$3.7\times$ slower than the cold HNSW path, confirming that HNSW delivers
+a meaningful speedup independent of caching.
+
+\paragraph{Warm path.}
+Once the HNSW index is paged into OS RAM and LRU caches are populated,
+P50 drops to \textbf{17\,ms} (internal) / \textbf{34\,ms} (E2E wall
+clock) for English queries.
+FAISS search falls to 2\,ms and both translation and encoding are served
+from in-process LRU caches at under 1\,ms, so latency is bounded by
+Tantivy BM25 ($\sim$6\,ms) and network/serialization overhead.
+
+\paragraph{Production characterisation.}
+In a deployed system, the server issues a warmup routine at startup
+(pre-querying representative terms to page the HNSW index into RAM)
+before accepting live traffic.
+After warmup, unique new queries incur only the BGE-M3 encoding cost
+($\sim$40\,ms P50) plus fast FAISS search ($\sim$2\,ms) once the index
+is resident, yielding a realistic steady-state P50 of approximately
+60--80\,ms for English queries.
+Repeated or popular queries are served entirely from LRU caches at
+$<$25\,ms P50.
+
+\subsection{Concurrency and Memory}
+The AgentPool of 8 independent DIF-SASRec instances sustains throughput
+for 10+ simultaneous users with no observed weight corruption, validated
+by stress-testing with 20 concurrent requests.
+Each agent holds a pretrained weight snapshot in CPU RAM ($\sim$148\,MB)
+for new-user cold-start initialization, with fine-tuned weights kept in
+GPU memory only for the duration of the request.
+Total pool VRAM footprint is 1.18\,GB, leaving headroom on a 24\,GB card
+for the FAISS HNSW indices and encoder models.

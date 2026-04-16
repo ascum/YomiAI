@@ -1,0 +1,18 @@
+\begin{table}[t]
+\caption{Sequential recommendation results on Amazon Books (100k users,
+         sampled evaluation: held-out item ranked among 99 random negatives).
+         DIF-SASRec reports mean $\pm$ std over 5 independent negative draws.
+         Best results in \textbf{bold}.}
+\label{tab:main_results}
+\centering
+\begin{tabular}{lcc}
+\toprule
+\textbf{Model} & \textbf{HR@10} & \textbf{NDCG@10} \\
+\midrule
+Content-KNN (BGE-M3)  & 0.4352 & 0.2610 \\
+GRU-SeqDQN            & 0.0098 & 0.0051 \\
+SASRec (item-ID)      & 0.5841 & 0.3614 \\
+DIF-SASRec (ours)     & \textbf{0.7244 $\pm$ 0.0024} & \textbf{0.4441 $\pm$ 0.0017} \\
+\bottomrule
+\end{tabular}
+\end{table}

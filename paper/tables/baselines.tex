@@ -1,0 +1,9 @@
+% Called via \input{tables/baselines} inside the Baselines subsection.
+We compare against:
+\textbf{Content-KNN} — cosine nearest neighbor on BGE-M3 embeddings,
+no sequential modeling;
+\textbf{GRU-SeqDQN} — GRU-based sequential model trained with DQN-style
+rewards~\cite{zhao2018deep}; % TODO: replace with correct GRU-SeqDQN citation
+\textbf{SASRec (ID)} — original SASRec with item-ID embeddings;
+\textbf{DIF-SASRec (ours)} — DIF-SASRec with BGE-M3 content embeddings,
+category auxiliary loss, and online adaptation.

@@ -1,0 +1,40 @@
+\section{System Overview}
+\label{sec:overview}
+
+Figure~\ref{fig:arch} illustrates the overall architecture.
+The system is implemented as a FastAPI service with three layers:
+an \emph{API layer} (routes for search, recommend, interact, profile),
+a \emph{service layer} (business logic for both modes), and a
+\emph{repository layer} (FAISS indices, MongoDB, Cleora embeddings).
+
+\begin{figure}[t]
+  \centering
+  % TODO: replace the placeholder below with your actual diagram
+  % Export your architecture diagram as figures/architecture_overview.pdf
+  \fbox{\parbox[c][6cm][c]{0.95\linewidth}{\centering
+    \textit{[Architecture diagram placeholder]}\\[4pt]
+    \small Active Search (Mode~1): Query $\to$ BGE-M3 / CLIP $\to$ RRF $\to$ Results\\[2pt]
+    \small Passive Rec (Mode~2): Profile $\to$ Cleora / DIF-SASRec $\to$ Ranked list
+  }}
+  \caption{Dual-mode system architecture. Solid arrows denote the active
+           search path; dashed arrows denote passive recommendation pipelines.}
+  \label{fig:arch}
+\end{figure}
+
+\subsection{Data Layer}
+The item catalog contains 3.08 million Amazon Books entries.
+Text embeddings (1024-dim, BGE-M3) and image embeddings (512-dim, CLIP) are
+indexed in HNSW-based FAISS structures for approximate nearest-neighbor
+search.
+Behavioral embeddings (1024-dim, Cleora) cover 375k items with co-purchase
+history.
+A Tantivy inverted index supports BM25 keyword retrieval.
+
+\subsection{User Profile}
+Each user maintains a persistent MongoDB document storing:
+(i)~an aggregated content embedding (exponential temporal weighting,
+half-life 30 interactions),
+(ii)~a rolling 50-item interaction history for DIF-SASRec inference, and
+(iii)~a raw interaction audit trail.
+Profiles are updated asynchronously after every click with user-level locking
+to prevent race conditions.

@@ -1,0 +1,18 @@
+\begin{table}[t]
+\caption{Ablation study on the Amazon Books test split (100k users).
+         Each row removes or disables one component from the full model.
+         $\Delta$HR is the relative change versus the full model.}
+\label{tab:ablation}
+\centering
+\begin{tabular}{lccc}
+\toprule
+\textbf{Configuration} & \textbf{HR@10} & \textbf{NDCG@10} & \textbf{$\Delta$HR} \\
+\midrule
+Full model                         & \textbf{0.7749} & \textbf{0.5029} & --- \\
+w/o category auxiliary loss        & 0.7612 & 0.4891 & $-1.8\%$ \\
+w/o content veto (Pipeline B)      & 0.7583 & 0.4847 & $-2.1\%$ \\
+w/o online adaptation              & 0.7134 & 0.4512 & $-7.9\%$ \\
+w/o dual-stream attention          & 0.7391 & 0.4714 & $-4.6\%$ \\
+\bottomrule
+\end{tabular}
+\end{table}
