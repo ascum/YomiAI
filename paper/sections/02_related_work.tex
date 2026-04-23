@@ -26,7 +26,11 @@ deterministic and require no GPU for training, making them suitable for
 catalog-scale deployment.
 
 \subsection{Hybrid Systems}
-% Briefly contrast with two-tower, BERT4Rec, LightGCN, etc.
-LightGCN~\cite{he2020lightgcn} provides a strong graph-based collaborative filtering baseline but
-does not natively handle multimodal queries or the active/passive mode
-distinction central to our design.
+Existing hybrid recommenders typically combine one behavioral signal with one
+content modality — for example, pairing graph-based co-occurrence with text
+embeddings — but treat retrieval as a single unified pipeline.
+None natively distinguish between active query-driven search and passive
+proactive recommendation, nor fuse visual, textual, and behavioral signals
+within a continuously updated user profile.
+Our system addresses this gap by coupling two complementary pipelines under
+a shared stateful profile that bridges both interaction modes.
