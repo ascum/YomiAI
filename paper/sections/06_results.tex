@@ -144,3 +144,44 @@ for new-user cold-start initialization, with fine-tuned weights kept in
 GPU memory only for the duration of the request.
 Total pool VRAM footprint is 1.18\,GB, leaving headroom on the 16\,GB card
 for the FAISS HNSW indices and encoder models.
+
+\subsection{Encoder Comparison: BLaIR vs.\ BGE-M3}
+\label{ssec:encoder}
+
+Table~\ref{tab:encoder_comparison} compares the legacy BLaIR
+encoder~\cite{hou2024amazon} against the production BGE-M3
+encoder~\cite{chen2024bgem3} along two axes.
+
+\paragraph{Item-similarity sampled evaluation.}
+Under the standard 99-negative protocol, BLaIR outperforms BGE-M3 on all
+ranking metrics (HR@10: 0.5484 vs.\ 0.4510, NDCG@10: 0.3513 vs.\ 0.3128).
+This result must be interpreted in light of the evaluation bias discussed in
+Section~\ref{sec:related}: the benchmark set was collected while BLaIR was
+the live system, so held-out clicks are structurally correlated with
+BLaIR's embedding space.
+Score distribution analysis confirms the artefact: BLaIR's intra-genre
+cosine similarity (0.819) and inter-genre cosine similarity (0.765) are
+nearly indistinguishable — a separation ratio of only 1.071 — indicating
+embedding collapse rather than discriminative semantic structure.
+BGE-M3 achieves a higher separation ratio (1.181), reflecting a
+well-distributed embedding space where genre clusters are more distinct.
+
+\paragraph{Text query retrieval quality.}
+Loading both encoders live and issuing 22 labelled text queries against
+their respective HNSW indices reveals the operational reality.
+BGE-M3 leads on every group except single-token English queries: medium
+(genre-precision@10 0.333 vs.\ 0.083), long (0.400 vs.\ 0.200), and all
+Vietnamese groups (0.275--0.550 vs.\ 0.025--0.050).
+On short single-token queries (e.g., ``mystery'', ``horror''), BLaIR
+marginally outperforms BGE-M3 (0.233 vs.\ 0.150); we attribute this to
+BLaIR's collapsed similarities incidentally returning genre-coherent
+neighborhoods regardless of the query token.
+For Vietnamese, BLaIR returns near-random results in both the short and
+long groups — a structural limitation of its English-only training — while
+BGE-M3's multilingual pre-training yields genre-precision of 0.275 and
+0.550 respectively.
+Since our system's primary interaction mode is typed text search (including
+Vietnamese), and since BLaIR's sampled-evaluation advantage is confounded
+by evaluation bias, we select BGE-M3 as the production encoder.
+
+\input{tables/encoder_comparison}

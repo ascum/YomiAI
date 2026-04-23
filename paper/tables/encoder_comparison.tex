@@ -1,0 +1,31 @@
+\begin{table}[t]
+\caption{BLaIR vs.\ BGE-M3 encoder comparison on Amazon Books.
+  \emph{Upper}: item-similarity sampled evaluation (20k users, 99 negatives,
+  seed~42); BLaIR's advantage is partly an artefact of evaluation data
+  collected under the BLaIR-powered system (see Section~\ref{ssec:encoder}).
+  \emph{Lower}: text query genre-precision@10 using live encoder inference
+  over 22 labelled queries — no circular evaluation bias applies here.
+  Best result per row in \textbf{bold}.}
+\label{tab:encoder_comparison}
+\centering
+\small
+\begin{tabular}{lrr}
+\toprule
+ & \textbf{BGE-M3} & \textbf{BLaIR} \\
+\midrule
+\multicolumn{3}{l}{\emph{Item-similarity sampled eval}} \\[2pt]
+\quad HR@5      & 0.3767 & \textbf{0.4195} \\
+\quad HR@10     & 0.4510 & \textbf{0.5484} \\
+\quad NDCG@10   & 0.3128 & \textbf{0.3513} \\
+\quad MRR@10    & 0.2694 & \textbf{0.2906} \\
+\quad Separation ratio (intra/inter) & \textbf{1.181} & 1.071 \\
+\midrule
+\multicolumn{3}{l}{\emph{Text query genre-precision@10}} \\[2pt]
+\quad Short EN (1--3 words)  & 0.150          & \textbf{0.233} \\
+\quad Medium EN (4--8 words) & \textbf{0.333} & 0.083          \\
+\quad Long EN (15+ words)    & \textbf{0.400} & 0.200          \\
+\quad Vietnamese short       & \textbf{0.275} & 0.025          \\
+\quad Vietnamese long        & \textbf{0.550} & 0.050          \\
+\bottomrule
+\end{tabular}
+\end{table}

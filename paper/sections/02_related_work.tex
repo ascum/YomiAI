@@ -34,3 +34,23 @@ proactive recommendation, nor fuse visual, textual, and behavioral signals
 within a continuously updated user profile.
 Our system addresses this gap by coupling two complementary pipelines under
 a shared stateful profile that bridges both interaction modes.
+
+\subsection{Text Encoders for Item Retrieval and Evaluation Limitations}
+BLaIR~\cite{hou2024amazon} fine-tunes a RoBERTa-Large backbone on
+(review\,text, item) contrastive pairs drawn from Amazon product data.
+This training regime produces item embeddings that align well with
+review-style queries of moderate length, but the model is English-only
+and degrades on short keyword queries that fall outside the review-text
+distribution — a known consequence of contrastive training on a narrowly
+distributed positive-pair corpus.
+
+A systematic evaluation limitation arises when benchmark data is gathered
+from a system already powered by the encoder under test: held-out clicks
+are structurally correlated with the incumbent model's embedding space,
+causing sampled-evaluation metrics (HR@10, NDCG@10) to favour the legacy
+encoder by construction.
+We address this in our encoder comparison
+(Section~\ref{ssec:encoder}) by supplementing standard sampled evaluation
+with live text query retrieval quality — genre-precision@10 over 22 labelled
+queries spanning short, medium, long, and Vietnamese groups — where no such
+circular bias exists.
