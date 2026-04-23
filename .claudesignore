@@ -1,0 +1,46 @@
+# Python
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Heavy data — FAISS indices, embeddings, raw parquet, archives
+data/
+sample_covers/
+*.faiss
+*.npz
+*.parquet
+*.rar
+*.tar.gz
+*.pt
+*.pkl
+
+# Evaluation artefacts
+evaluation/eval_users.json
+evaluation/logs/
+
+# Large root-level text dumps (training logs, wrap-ups)
+wrap-up.txt
+wrap-up-2.txt
+paper_update.txt
+output.log
+2026-04-12-2048batch-Retrain-0.77HR@10.txt
+
+# Legacy / non-source directories
+IAAAconference(Latex)/
+Markdowns/
+profiling/
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
