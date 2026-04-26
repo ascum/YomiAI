@@ -1,56 +1,128 @@
 \section{Related Work}
 \label{sec:related}
 
+% MAJOR REVISION: Restructured all subsections to include explicit per-method
+% limitations and cross-method comparisons. Added synthesis subsection at end.
+
+% -------------------------------------------------------------------
 \subsection{Sequential Recommendation}
-SASRec~\cite{kang2018self} introduced self-attention for modeling sequential user behavior,
-outperforming RNN-based methods.
-DIF-SASRec~\cite{xie2022difsr} decoupled item ID, attribute, and content features into
-separate attention streams, enabling fine-grained preference modeling.
-We adopt DIF-SASRec and replace its original ID-based item representation
-with dense BGE-M3 content embeddings, eliminating the need for ID lookup
-tables and enabling zero-shot generalization to unseen items.
+% CHANGED: Added cold-start / ID-dependency limitation for SASRec and BERT4Rec;
+%          clarified that DIF-SASRec's side information is supplementary, not
+%          a replacement for item IDs; added online-adaptation gap.
+% -------------------------------------------------------------------
+Self-attentive sequential models are the dominant paradigm for modeling
+user preference dynamics over interaction histories.
+SASRec~\cite{kang2018self} replaces recurrent encoders with causal
+self-attention, establishing a strong benchmark for next-item prediction.
+BERT4Rec~\cite{sun2019bert4rec} extends this with bidirectional masked
+modeling for richer sequence representations.
+Both models are, however, fundamentally \emph{ID-based}: each item is
+represented by a learned lookup embedding indexed by an integer identifier.
+This design causes complete retrieval failure for catalog items absent from
+the training set — the item-level cold-start problem — and precludes
+zero-shot generalization to new or tail-end items without retraining.
 
-\subsection{Multimodal Retrieval}
-CLIP~\cite{radford2021clip} demonstrated strong image--text alignment through contrastive
-pre-training at scale.
-BGE-M3~\cite{chen2024bgem3} provides multilingual, multi-granularity dense retrieval.
-Prior work on multimodal recommendation combines visual and textual
-signals but rarely integrates them with behavioral graph embeddings.
+DIF-SASRec~\cite{xie2022difsr} partially mitigates this by decoupling item
+IDs, attribute scalars, and content signals into separate attention streams,
+enabling finer-grained preference modeling.
+Nevertheless, the auxiliary features remain \emph{supplementary} to the ID
+embedding rather than replacing it; the model still requires every item to
+carry a pre-assigned training-time identifier and offers no mechanism for
+reasoning over items outside its vocabulary.
+Furthermore, all three models are trained offline, incur complete inference
+failure for unseen IDs, and support neither multilingual queries nor
+real-time per-user adaptation at serving time.
 
+% -------------------------------------------------------------------
+\subsection{Dense and Multimodal Retrieval}
+% CHANGED: Added stateless / no-personalization limitation for CLIP and BGE-M3;
+%          noted English-centric pre-training as a deployment barrier; clarified
+%          the gap between dense retrieval and behavioral graph integration.
+% -------------------------------------------------------------------
+Contrastive vision--language models, exemplified by CLIP~\cite{radford2021clip},
+establish strong cross-modal alignment through large-scale paired pre-training,
+enabling direct comparison of image and text embeddings in a shared latent space.
+Their principal limitation for personalised retrieval is statelessness: CLIP
+encodes each query independently, with no mechanism to incorporate user
+interaction history or preference evolution.
+Its pre-training corpus is also predominantly English, constraining
+cross-lingual effectiveness in multilingual deployments.
+
+BGE-M3~\cite{chen2024bgem3} significantly extends dense retrieval to
+multilingual, multi-granularity queries and handles both symmetric and
+asymmetric matching tasks.
+Its limitation mirrors CLIP's: purely content-based scoring provides no signal
+about individual co-purchase patterns or behavioral history.
+Prior multimodal recommendation work that combines visual and textual dense
+embeddings does not couple these signals with behavioral graph structure, nor
+does it maintain a persistent user profile that jointly drives query-based
+search and proactive recommendation.
+
+% -------------------------------------------------------------------
 \subsection{Graph-Based Collaborative Filtering}
-Cleora~\cite{cleora2021} learns item embeddings via Markov-chain propagation over
-co-occurrence graphs, producing stable, high-quality behavioral representations
-without explicit user--item matrix factorization.
-Unlike neural collaborative filtering methods, Cleora embeddings are
-deterministic and require no GPU for training, making them suitable for
-catalog-scale deployment.
+% CHANGED: Added catalog-coverage limitation for Cleora (375k / 3.08M);
+%          identified query-agnostic behavior as a weakness for active search.
+% -------------------------------------------------------------------
+Graph-based approaches learn item representations from co-purchase or
+co-interaction edges.
+Conventional neural collaborative filtering requires explicit user--item
+factorization matrices, incurring memory and compute costs that scale with
+catalog size and precluding deployment over millions of items without
+approximate compression.
+Cleora~\cite{cleora2021} avoids these costs via deterministic Markov-chain
+propagation over the co-occurrence graph, producing stable behavioral
+embeddings without matrix factorization or GPU training.
+This makes it attractive for catalog-scale deployment, but it carries a
+significant coverage constraint: embeddings can only be constructed for items
+that appear in at least one co-purchase edge.
+In our setting, this covers 375k of 3.08M catalog items (12.2\%),
+leaving the remainder inaccessible to graph-based retrieval.
+Moreover, graph methods are inherently \emph{query-agnostic}: they return
+the same behavioral neighborhood for a given item regardless of the user's
+typed query, making them unsuitable as a standalone solution for intent-driven
+active search.
 
-\subsection{Hybrid Systems}
-Existing hybrid recommenders typically combine one behavioral signal with one
-content modality — for example, pairing graph-based co-occurrence with text
-embeddings — but treat retrieval as a single unified pipeline.
-None natively distinguish between active query-driven search and passive
-proactive recommendation, nor fuse visual, textual, and behavioral signals
-within a continuously updated user profile.
-Our system addresses this gap by coupling two complementary pipelines under
-a shared stateful profile that bridges both interaction modes.
+% -------------------------------------------------------------------
+\subsection{Hybrid Retrieval Systems}
+% CHANGED: Replaced vague original paragraph with specific structural limitations
+%          of existing hybrid systems (single pipeline, static user state, two-modality cap).
+% -------------------------------------------------------------------
+Hybrid recommenders that combine behavioral and content signals have been
+widely studied, but existing systems share three structural limitations.
+First, they treat retrieval as a single unified pipeline, with no architectural
+separation between user-initiated search (active mode) and system-initiated
+suggestions (passive mode) — a distinction critical for conversational or
+multi-touch interfaces.
+Second, most systems fuse at most two modalities at inference time and assume a
+static user representation that is not updated between requests.
+Third, user state is maintained implicitly through the model's training
+distribution rather than as an explicitly persisted, interaction-time-updated
+embedding that feeds both the query and the recommendation path.
+No existing system in this space simultaneously supports multilingual free-text
+and image-based active search, behavioral-graph and sequential-model passive
+recommendations, and a shared continuously-updated user profile connecting
+the two modes.
 
-\subsection{Text Encoders for Item Retrieval and Evaluation Limitations}
+% -------------------------------------------------------------------
+\subsection{Text Encoders for Item Retrieval and Evaluation Methodology}
+% KEPT: Content carried forward from previous version; lightly edited for flow
+%       and tightened around the evaluation-bias argument.
+% -------------------------------------------------------------------
 BLaIR~\cite{hou2024amazon} fine-tunes a RoBERTa-Large backbone on
-(review\,text, item) contrastive pairs drawn from Amazon product data.
-This training regime produces item embeddings that align well with
-review-style queries of moderate length, but the model is English-only
-and degrades on short keyword queries that fall outside the review-text
-distribution — a known consequence of contrastive training on a narrowly
-distributed positive-pair corpus.
-
-A systematic evaluation limitation arises when benchmark data is gathered
-from a system already powered by the encoder under test: held-out clicks
-are structurally correlated with the incumbent model's embedding space,
+(review\,text, item) contrastive pairs, yielding item embeddings aligned
+with review-style queries of moderate length.
+Two limitations arise.
+First, the model is English-only and degrades on short keyword queries that
+fall outside the review-text distribution — a direct consequence of training
+on a narrowly distributed positive-pair corpus.
+Second, a systematic \emph{evaluation-bias} problem emerges whenever benchmark
+clicks are collected from a live system powered by the same encoder under test:
+held-out items are structurally correlated with that encoder's embedding space,
 causing sampled-evaluation metrics (HR@10, NDCG@10) to favour the legacy
 encoder by construction.
-We address this in our encoder comparison
-(Section~\ref{ssec:encoder}) by supplementing standard sampled evaluation
-with live text query retrieval quality — genre-precision@10 over 22 labelled
-queries spanning short, medium, long, and Vietnamese groups — where no such
-circular bias exists.
+We address this in our encoder comparison (Section~\ref{ssec:encoder}) by
+supplementing sampled evaluation with live text query retrieval quality ---
+genre-precision@10 over 22 labelled queries spanning short, medium, long, and
+Vietnamese groups --- where no such circular bias applies.
+
+\FloatBarrier

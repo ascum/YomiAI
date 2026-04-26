@@ -89,3 +89,5 @@ profiling/vi_search_audit_*.txt
 
 # --- Jupyter ---
 .ipynb_checkpoints
+# Added by code-review-graph
+.code-review-graph/

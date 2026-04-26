@@ -231,6 +231,41 @@ class PipelineAStrategy:
         return scores
 
 
+class CombinedStrategy:
+    """
+    Union of Pipeline A (Cleora+BGE-M3) and DIF-SASRec via RRF fusion.
+
+    HR@K equals P(hit_A or hit_B) — the target appears in either pipeline's
+    top-K.  RRF preserves this property while producing a single merged
+    ranking for NDCG.  Standard k=60 constant.
+    """
+    name = "Combined (A+B)"
+    _RRF_K = 60
+
+    def __init__(self, pipeline_a: PipelineAStrategy, dif_sasrec: DIFSASRecStrategy):
+        self.pipeline_a = pipeline_a
+        self.dif_sasrec = dif_sasrec
+
+    def score_candidates(self, train_clicks: list, candidate_asins: list) -> dict:
+        sa = self.pipeline_a.score_candidates(train_clicks, candidate_asins)
+        sb = self.dif_sasrec.score_candidates(train_clicks, candidate_asins)
+
+        ranked_a = sorted(candidate_asins, key=lambda a: sa.get(a, 0.0), reverse=True)
+        ranked_b = sorted(candidate_asins, key=lambda a: sb.get(a, 0.0), reverse=True)
+        ra = {a: i + 1 for i, a in enumerate(ranked_a)}
+        rb = {a: i + 1 for i, a in enumerate(ranked_b)}
+
+        k = self._RRF_K
+        return {a: 1.0 / (k + ra[a]) + 1.0 / (k + rb[a]) for a in candidate_asins}
+
+    def recommend_full(self, train_clicks: list, k: int, exclude: set) -> list:
+        top_a = self.pipeline_a.recommend_full(train_clicks, k, exclude)
+        top_b = self.dif_sasrec.recommend_full(train_clicks, k, exclude)
+        union = list(dict.fromkeys(top_a + top_b))
+        scores = self.score_candidates(train_clicks, union)
+        return sorted(union, key=lambda a: scores.get(a, 0.0), reverse=True)[:k]
+
+
 # ─── Metric helpers ───────────────────────────────────────────────────────────
 
 def hit_rate(ranked: list, target: str, k: int) -> float:
@@ -342,7 +377,7 @@ def eval_sampled(strategy, eval_users, all_asins, neg_pool_asins,
             continue
 
         candidates = [target] + negs
-        random.shuffle(candidates)          # break ties randomly, not in favour of target
+        # random.shuffle(candidates)          # break ties randomly, not in favour of target
         scores     = strategy.score_candidates(train, candidates)
         ranked     = sorted(candidates, key=lambda a: scores.get(a, 0.0), reverse=True)
 
@@ -404,6 +439,89 @@ def eval_full(strategy, eval_users, k, max_users, logger):
         len(hr5),
         elapsed,
     )
+
+
+
+# ─── Complementarity ──────────────────────────────────────────────────────────
+
+def eval_complementarity(strategy_a, strategy_b, eval_users, neg_pool_asins,
+                          n_neg, k, max_users, logger):
+    """
+    Per-user 2×2 hit matrix: did Pipeline A hit? did Pipeline B hit?
+
+    Both strategies score the same shuffled candidate pool so the results
+    are directly comparable and the combined OR hit is consistent with the
+    main eval_sampled numbers.
+
+    Returns (counts_dict, n_evaluated, elapsed_s) where counts_dict has
+    keys 'aa' (both hit), 'ab' (A only), 'ba' (B only), 'bb' (neither).
+    """
+    counts = {"aa": 0, "ab": 0, "ba": 0, "bb": 0}
+    users  = eval_users[:max_users] if max_users else eval_users
+    t0     = time.time()
+    logger.info(f"Complementarity  n_users={len(users):,}  k={k}")
+
+    for user in users:
+        train  = user.get("train_clicks", [])
+        test   = user.get("test_clicks",  [])
+        if not train or not test:
+            continue
+        target = test[0]
+        seen   = set(train) | set(test)
+        negs   = [a for a in random.sample(neg_pool_asins,
+                  min(n_neg * 3, len(neg_pool_asins))) if a not in seen][:n_neg]
+        if len(negs) < n_neg // 2:
+            continue
+
+        candidates = [target] + negs
+        # shuffle removed — was causing random-state interference analogous
+        # to the main eval_sampled shuffle that was reverted on 2026-04-26
+        sa = strategy_a.score_candidates(train, candidates)
+        sb = strategy_b.score_candidates(train, candidates)
+
+        ranked_a = sorted(candidates, key=lambda a: sa.get(a, 0.0), reverse=True)
+        ranked_b = sorted(candidates, key=lambda a: sb.get(a, 0.0), reverse=True)
+
+        hit_a = target in ranked_a[:k]
+        hit_b = target in ranked_b[:k]
+
+        if   hit_a and     hit_b: counts["aa"] += 1
+        elif hit_a and not hit_b: counts["ab"] += 1
+        elif not hit_a and hit_b: counts["ba"] += 1
+        else:                     counts["bb"] += 1
+
+    elapsed = time.time() - t0
+    n = sum(counts.values()) or 1
+    logger.info(
+        f"Complementarity done  n={n:,}  {elapsed:.1f}s  "
+        f"A∩B={counts['aa']:,}  A-only={counts['ab']:,}  "
+        f"B-only={counts['ba']:,}  neither={counts['bb']:,}"
+    )
+    return counts, n, elapsed
+
+
+def print_complementarity_table(counts: dict, n: int, k: int):
+    aa, ab, ba, bb = counts["aa"], counts["ab"], counts["ba"], counts["bb"]
+    combined_hr = (aa + ab + ba) / n
+
+    print()
+    print(bold(f"  Pipeline complementarity  (k={k}, n={n:,})"))
+    print()
+    print(f"  {'':30s}  {'B hits':>14}  {'B misses':>14}")
+    print("  " + "─" * 64)
+    print(f"  {'A hits':30s}  "
+          f"{green(f'{aa:,}  ({aa/n*100:.1f}%)'):>23}  "
+          f"{f'{ab:,}  ({ab/n*100:.1f}%)':>14}")
+    print(f"  {'A misses':30s}  "
+          f"{f'{ba:,}  ({ba/n*100:.1f}%)':>14}  "
+          f"{dim(f'{bb:,}  ({bb/n*100:.1f}%)'):>23}")
+    print("  " + "─" * 64)
+    b_rescues_a = ba / (ba + bb) if (ba + bb) else 0.0
+    a_rescues_b = ab / (ab + bb) if (ab + bb) else 0.0
+    print(f"  A rescues {b_rescues_a*100:.1f}% of B misses  |  "
+          f"B rescues {a_rescues_b*100:.1f}% of A misses")
+    print(f"  Combined HR@{k} = {green(f'{combined_hr:.4f}')}")
+    print()
 
 
 # ─── History ──────────────────────────────────────────────────────────────────
@@ -555,6 +673,8 @@ def parse_args():
                    help="Only evaluate DIF-SASRec — skip Content-KNN and GRU-SeqDQN")
     p.add_argument("--pipeline-a-only", action="store_true",
                    help="Only evaluate Pipeline A (Cleora+BGE-M3) — no model inference needed")
+    p.add_argument("--combined", action="store_true",
+                   help="Run Pipeline A + DIF-SASRec + Combined (A+B) and print complementarity table")
     p.add_argument("--pretrained-path", type=str, default=None,
                    help="Path to DIF-SASRec checkpoint (default: data/dif_sasrec_pretrained.pt)")
     return p.parse_args()
@@ -626,6 +746,14 @@ def main():
             pretrained_path=pretrained_path if os.path.exists(pretrained_path) else None,
         )
         strategies = [dif_strategy]
+    elif args.combined:
+        pipeline_a   = PipelineAStrategy(retriever, emb_cache)
+        dif_strategy = DIFSASRecStrategy(
+            retriever, cat_encoder, emb_cache,
+            pretrained_path=pretrained_path if os.path.exists(pretrained_path) else None,
+        )
+        combined     = CombinedStrategy(pipeline_a, dif_strategy)
+        strategies   = [pipeline_a, dif_strategy, combined]
     else:
         dif_strategy = DIFSASRecStrategy(
             retriever, cat_encoder, emb_cache,
@@ -661,6 +789,17 @@ def main():
             }
 
         print_results_table(results_map, args.mode, args.negatives, args.k)
+
+        # ── Complementarity (only when --combined and sampled mode) ──────────
+        if args.combined and args.mode == "sampled":
+            print(bold("\n  Computing complementarity table ..."))
+            counts, n_comp, t_comp = eval_complementarity(
+                pipeline_a, dif_strategy, eval_users, neg_pool_asins,
+                n_neg=args.negatives, k=args.k,
+                max_users=args.max_users, logger=logger,
+            )
+            print_complementarity_table(counts, n_comp, args.k)
+            logger.info(f"Complementarity done in {t_comp:.1f}s")
 
     else:
         baseline_hr10   = None

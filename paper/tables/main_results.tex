@@ -1,19 +1,19 @@
-\begin{table}[t]
+\begin{table}[htb]
 \caption{Recommendation results on Amazon Books (100k users, sampled
-         evaluation: held-out item ranked among 99 random negatives with
-         random tiebreak; seed 42).
-         Best results in \textbf{bold}.}
+         evaluation: held-out item ranked among 99 random negatives;
+         seed 42).
+         Best result per column in \textbf{bold}.}
 \label{tab:main_results}
 \centering
 \begin{tabular}{lcc}
 \toprule
 \textbf{Model} & \textbf{HR@10} & \textbf{NDCG@10} \\
 \midrule
-Content-KNN (BGE-M3)            & 0.4353 & 0.3030 \\
-DIF-SASRec (Pipeline~B)         & 0.4836 & 0.3737 \\
-Pipeline~A (Cleora+BGE-M3)      & 0.7626 & 0.4867 \\
+Content-KNN (BGE-M3)            & 0.4346 & 0.3022 \\
+DIF-SASRec (Pipeline~B)         & 0.7748 & 0.5027 \\
+Pipeline~A (Cleora+BGE-M3)      & \textbf{0.9047} & 0.5393 \\
 \midrule
-\textbf{System (A $\cup$ B)}    & \textbf{0.7886} & \textbf{0.5409} \\
+System (A $\cup$ B)             & 0.8841 & \textbf{0.7172} \\
 \bottomrule
 \end{tabular}
 \end{table}

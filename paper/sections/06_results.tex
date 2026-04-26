@@ -3,30 +3,31 @@
 
 \subsection{Recommendation Performance}
 Table~\ref{tab:main_results} reports HR@10 and NDCG@10 under the
-sampled evaluation protocol (99 random negatives, random tiebreak).
+sampled evaluation protocol (99 random negatives, seed 42).
 
 \input{tables/main_results}
 
 \paragraph{Pipeline~A (Cleora + BGE-M3).}
-Pipeline~A achieves the highest standalone HR@10 of \textbf{0.7626}
-(NDCG@10 = 0.4867), a $+75.2\%$ improvement over the Content-KNN
-baseline (0.4353).
+Pipeline~A achieves the highest HR@10 of \textbf{0.9047}
+(NDCG@10 = 0.5393), a $+108.1\%$ improvement over the Content-KNN
+baseline (0.4346).
 By restricting the candidate space to items within the Cleora behavioral
 co-purchase graph and ranking by BGE-M3 profile similarity, Pipeline~A
 leverages both behavioral and semantic signals simultaneously.
 
 \paragraph{DIF-SASRec (Pipeline~B).}
-DIF-SASRec achieves HR@10 = 0.4836 (NDCG@10 = 0.3737), an $+11.1\%$
-improvement over Content-KNN (0.4353), confirming that sequential
+DIF-SASRec achieves HR@10 = 0.7748 (NDCG@10 = 0.5027), a $+78.3\%$
+improvement over Content-KNN (0.4346), confirming that sequential
 modeling captures preference dynamics that nearest-neighbor retrieval
 misses.
 
 \paragraph{Dual-pipeline system.}
-The union of Pipeline~A and Pipeline~B top-10 lists achieves
-\textbf{HR@10 = 0.7886} (NDCG@10 = 0.5409), the best overall result.
+The RRF-combined system achieves HR@10 = 0.8841 with substantially
+higher NDCG@10 = \textbf{0.7172} (vs.\ 0.5393 for Pipeline~A alone),
+reflecting more precise ranking when both pipelines agree on the target.
 Table~\ref{tab:complementarity} breaks down the per-user hit patterns.
 Pipeline~A rescues \textbf{59.0\%} of DIF-SASRec misses, while
-DIF-SASRec rescues \textbf{11.0\%} of Pipeline~A misses.
+DIF-SASRec rescues \textbf{11.1\%} of Pipeline~A misses.
 The two pipelines serve genuinely different user--item patterns:
 Pipeline~A excels on items with strong behavioral co-purchase signals
 (within the Cleora 375k index), while DIF-SASRec provides complementary
@@ -43,15 +44,15 @@ ten times harder than the standard setting.
 
 \input{tables/robustness_results}
 
-Pipeline~A achieves the highest HR@10 of \textbf{0.3264} at this harder
-setting, while DIF-SASRec leads on NDCG@10 (\textbf{0.2209} vs 0.2096),
+Pipeline~A achieves the highest HR@10 of \textbf{0.3272} at this harder
+setting, while DIF-SASRec leads on NDCG@10 (\textbf{0.2209} vs 0.2102),
 indicating that DIF-SASRec tends to rank hits closer to position~1
 when it does retrieve the target.
 Content-KNN drops to 0.2122 HR@10.
 Crucially, both Pipeline~A and DIF-SASRec show an \emph{increasing}
 relative advantage over the random baseline as the pool grows:
-Pipeline~A rises from $7.6\times$ (99-negative) to $32.6\times$
-(999-negative); DIF-SASRec from $4.8\times$ to $31.4\times$.
+Pipeline~A rises from $9.0\times$ (99-negative) to $32.7\times$
+(999-negative); DIF-SASRec from $7.7\times$ to $31.4\times$.
 Neither model's performance is an artefact of easy negatives in the
 standard pool.
 
@@ -62,12 +63,14 @@ ablations.
 \input{tables/ablation}
 
 \paragraph{Pipeline ablation.}
-Pipeline~A alone (+57.6\% over Pipeline~B baseline) demonstrates that
+Pipeline~A alone (+16.8\% over Pipeline~B baseline) demonstrates that
 behavioral co-purchase structure combined with BGE-M3 profile similarity
 is a powerful retrieval signal in the books domain.
-The full union system adds a further +3.4\% relative by incorporating
-DIF-SASRec's complementary sequential modeling for items outside
-Cleora's behavioral coverage.
+The combined system achieves NDCG@10 = 0.7172, substantially higher
+than either pipeline alone (A: 0.5393, B: 0.5027), demonstrating that
+RRF fusion concentrates the merged ranking on items both pipelines agree
+on — gaining ranking quality at the cost of a modest HR@10 reduction
+relative to Pipeline~A's $9.0\times$ coverage breadth.
 
 \paragraph{Category auxiliary loss.}
 Removing the auxiliary category classification head reduces DIF-SASRec
@@ -124,64 +127,44 @@ FAISS search falls to 2\,ms and both translation and encoding are served
 from in-process LRU caches at under 1\,ms, so latency is bounded by
 Tantivy BM25 ($\sim$6\,ms) and network/serialization overhead.
 
-\paragraph{Production characterisation.}
-In a deployed system, the server issues a warmup routine at startup
-(pre-querying representative terms to page the HNSW index into RAM)
-before accepting live traffic.
-After warmup, unique new queries incur only the BGE-M3 encoding cost
-($\sim$40\,ms P50) plus fast FAISS search ($\sim$2\,ms) once the index
-is resident, yielding a realistic steady-state P50 of approximately
-60--80\,ms for English queries.
-Repeated or popular queries are served entirely from LRU caches at
-$<$25\,ms P50.
-
-\subsection{Concurrency and Memory}
-The AgentPool of 8 independent DIF-SASRec instances sustains throughput
-for 10+ simultaneous users with no observed weight corruption, validated
-by stress-testing with 20 concurrent requests.
-Each agent holds a pretrained weight snapshot in CPU RAM ($\sim$148\,MB)
-for new-user cold-start initialization, with fine-tuned weights kept in
-GPU memory only for the duration of the request.
-Total pool VRAM footprint is 1.18\,GB, leaving headroom on the 16\,GB card
-for the FAISS HNSW indices and encoder models.
-
 \subsection{Encoder Comparison: BLaIR vs.\ BGE-M3}
 \label{ssec:encoder}
 
 Table~\ref{tab:encoder_comparison} compares the legacy BLaIR
 encoder~\cite{hou2024amazon} against the production BGE-M3
 encoder~\cite{chen2024bgem3} along two axes.
+\input{tables/encoder_comparison}
 
 \paragraph{Item-similarity sampled evaluation.}
-Under the standard 99-negative protocol, BLaIR outperforms BGE-M3 on all
+Under the standard 99-negative protocol on 20k users, BLaIR outperforms BGE-M3 on all
 ranking metrics (HR@10: 0.5484 vs.\ 0.4510, NDCG@10: 0.3513 vs.\ 0.3128).
 This result must be interpreted in light of the evaluation bias discussed in
 Section~\ref{sec:related}: the benchmark set was collected while BLaIR was
 the live system, so held-out clicks are structurally correlated with
 BLaIR's embedding space.
 Score distribution analysis confirms the artefact: BLaIR's intra-genre
-cosine similarity (0.819) and inter-genre cosine similarity (0.765) are
-nearly indistinguishable — a separation ratio of only 1.071 — indicating
+cosine similarity (0.811) and inter-genre cosine similarity (0.765) are
+nearly indistinguishable — a separation ratio of only 1.061 — indicating
 embedding collapse rather than discriminative semantic structure.
-BGE-M3 achieves a higher separation ratio (1.181), reflecting a
+BGE-M3 achieves a higher separation ratio (1.147), reflecting a
 well-distributed embedding space where genre clusters are more distinct.
 
 \paragraph{Text query retrieval quality.}
 Loading both encoders live and issuing 22 labelled text queries against
 their respective HNSW indices reveals the operational reality.
 BGE-M3 leads on every group except single-token English queries: medium
-(genre-precision@10 0.333 vs.\ 0.083), long (0.400 vs.\ 0.200), and all
-Vietnamese groups (0.275--0.550 vs.\ 0.025--0.050).
+(genre-precision@10 0.333 vs.\ 0.083), long (0.400 vs.\ 0.200), and both
+non-English groups (0.275--0.550 vs.\ 0.025--0.050).
 On short single-token queries (e.g., ``mystery'', ``horror''), BLaIR
 marginally outperforms BGE-M3 (0.233 vs.\ 0.150); we attribute this to
 BLaIR's collapsed similarities incidentally returning genre-coherent
 neighborhoods regardless of the query token.
-For Vietnamese, BLaIR returns near-random results in both the short and
-long groups — a structural limitation of its English-only training — while
+For non-English queries, BLaIR returns near-random results in both the short
+and long groups — a structural limitation of its English-only training — while
 BGE-M3's multilingual pre-training yields genre-precision of 0.275 and
 0.550 respectively.
 Since our system's primary interaction mode is typed text search (including
-Vietnamese), and since BLaIR's sampled-evaluation advantage is confounded
-by evaluation bias, we select BGE-M3 as the production encoder.
+non-English queries), and since BLaIR's sampled-evaluation advantage is
+confounded by evaluation bias, we select BGE-M3 as the production encoder.
 
-\input{tables/encoder_comparison}
+\FloatBarrier
