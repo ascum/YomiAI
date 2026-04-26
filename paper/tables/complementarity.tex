@@ -1,4 +1,4 @@
-\begin{table}[htb]
+\begin{table}[H]
 \caption{Pipeline complementarity analysis on Amazon Books (100k users,
          99-negative sampled evaluation, seed 42).
          Each cell shows the number of users (and percentage) for whom
@@ -10,15 +10,15 @@
 \toprule
  & \textbf{Pipeline~B hits} & \textbf{Pipeline~B misses} \\
 \midrule
-\textbf{Pipeline~A hits}   & 45{,}844~~(45.8\%) & 30{,}389~~(30.4\%) \\
-\textbf{Pipeline~A misses} &  2{,}640~~~(2.6\%) & 21{,}127~~(21.1\%) \\
+\textbf{Pipeline~A hits}   & 70{,}557~~(70.6\%) & 19{,}909~~(19.9\%) \\
+\textbf{Pipeline~A misses} &  6{,}893~~~(6.9\%) &  2{,}641~~~(2.6\%) \\
 \bottomrule
 \end{tabular}
 \vspace{4pt}
 
 \noindent
-Pipeline~A rescues \textbf{59.0\%} of Pipeline~B misses;
-Pipeline~B rescues \textbf{11.1\%} of Pipeline~A misses.
-Union HR@10 = \textbf{0.7887} vs.\ Pipeline~A alone = 0.7623
-(+3.5\% relative).
+Pipeline~A rescues \textbf{88.3\%} of Pipeline~B misses;
+Pipeline~B rescues \textbf{72.3\%} of Pipeline~A misses.
+Union HR@10 = \textbf{0.9736} vs.\ Pipeline~A alone = 0.9047
+(+7.6\% relative).
 \end{table}

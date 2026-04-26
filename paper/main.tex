@@ -7,7 +7,7 @@
 % ---- Core packages ----
 \usepackage{url}
 \def\UrlFont{\rmfamily}
-
+\usepackage{float}
 \usepackage{graphicx}           % \includegraphics
 \usepackage{booktabs}           % \toprule / \midrule / \bottomrule
 \usepackage{amsmath}            % align, equation*
@@ -15,8 +15,10 @@
 \usepackage{multirow}           % table row-span
 \usepackage{xcolor}
 \usepackage{hyperref}           % clickable refs (comment out for camera-ready if required)
-\usepackage{microtype}          % better line breaking
-\usepackage{placeins}           % \FloatBarrier
+\usepackage{microtype}
+% better line breaking
+\raggedbottom            % prevent inter-paragraph stretch to fill pages
+\usepackage{float}
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta, backgrounds}
 
@@ -27,20 +29,20 @@
 \begin{document}
 \mainmatter
 
-\title{Multimedia Data Mining for Next Best Action Recommendations}
+\title{Bridging Multimodal Content and Behavioral Signals for Next Best Action Recommendation}
 
 \titlerunning{Multimedia Data Mining for NBA Recommendations}
 
 \author{Pham Tran Dang Khoa\inst{1} \and
         Dang Minh Khang\inst{1} \and
         Le Ha Nguyen Khanh\inst{1} \and
-        PhD.\ Le Thanh Van\inst{1}}
+        \ Thanh-Van Le\inst{1}}
 \authorrunning{Pham, Dang, and Le}
 
-\tocauthor{Pham Tran Dang Khoa, Dang Minh Khang, Le Ha Nguyen Khanh, PhD.\ Le Thanh Van}
+\tocauthor{Pham Tran Dang Khoa, Dang Minh Khang, Le Ha Nguyen Khanh, \ Le Thanh Van}
 
 \institute{
-  Department of Computer Systems and Networks,\\
+ % Department of Computer Systems and Networks,\\
   Faculty of Computer Science and Engineering,\\
   Ho Chi Minh City University of Technology (HCMUT), VNU-HCM, Vietnam\\
   \email{\{khoa.pham2210, khang.dangminh26, khanh.lehai709, ltvan\}@hcmut.edu.vn}

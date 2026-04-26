@@ -2,54 +2,42 @@
 \label{sec:intro}
 
 % Paragraph 1 — NBA context & multimedia gap
-Next Best Action (NBA) systems are decision-support tools used in customer
-service and marketing to identify the most appropriate action for each
-customer at a specific point in time — such as recommending a product,
-sending a personalised offer, or suggesting support.
-Current NBA research and deployments rely predominantly on
-\emph{structured} transaction data: purchase logs, click histories, and
-demographic records.
-However, customers increasingly generate large volumes of
-\emph{unstructured and multimedia} data — natural language queries, images,
-and rich interaction sequences — which, if effectively leveraged, can
-provide crucial contextual signals for more accurate and personalised
-recommendations.
-Bridging the gap between structured behavioral signals and unstructured
-multimedia content is therefore a central challenge in modern NBA system
-design.
+Next Best Action (NBA) systems identify the most appropriate action for each
+customer at a given point in time, such as recommending products or
+personalized offers.
+Current deployments rely predominantly on \emph{structured} transaction data:
+purchase logs, click histories, and demographic records.
+Modern users increasingly generate \emph{unstructured and multimedia} data,
+including natural language queries, images, and interaction sequences, which
+provide crucial contextual signals for more accurate recommendations.
 
 % Paragraph 2 — Domain narrowing & interaction-content gap
-In the domain of book discovery, this challenge is especially acute.
+Book discovery is a representative testbed for this challenge.
 Users who know what they want issue free-text or image-based queries
-(active search), while passive browsers benefit most from proactive
-suggestions derived from their interaction history (passive recommendation).
-Most existing systems address only one of these modes, leaving an
-\emph{interaction-content gap}: behavioral co-purchase signals are
-decoupled from semantic content understanding (titles, descriptions, cover
-images).
+(active search), while passive browsers benefit from proactive suggestions
+derived from their interaction history (passive recommendation).
+Most systems address only one mode, leaving an \emph{interaction-content gap}:
+behavioral co-purchase signals are decoupled from semantic content understanding.
 Collaborative filtering excels at crowd wisdom but suffers from cold-start
-and ignores multimodal content.
-Sequential models~\cite{kang2018self} capture preference evolution but
-typically discard visual signals.
-Content-based encoders retrieve semantically relevant items but lack the
-relational structure that behavioral graphs provide.
+and ignores multimodal content; sequential models~\cite{kang2018self} capture
+preference evolution but discard visual signals; content-based encoders retrieve
+relevant items but lack behavioral graph structure.
 
 % Paragraph 3 — Our approach & contributions
-We propose a \textbf{Dual-Mode Multimodal NBA Recommendation System} that
-mines text, visual, and behavioral multimedia data jointly, addressing
-both the active and passive recommendation settings within a single
-architecture:
+To address these challenges, we propose a \textbf{Dual-Mode Multimodal NBA Recommendation System} that jointly models active search and passive personalization, integrating heterogeneous signals from text, images, and user behavior.
 \begin{itemize}
-  \item \textbf{Mode~1 (Active Search):} multilingual query-driven
-        retrieval (19 languages via NLLB-200) fusing BGE-M3 text embeddings
-        and CLIP image embeddings via Reciprocal Rank Fusion (RRF), with
-        optional BM25 keyword boosting and multi-layer LRU caching.
-  \item \textbf{Mode~2 (Passive Recommendation):} two complementary
-        pipelines — (a)~Cleora graph embeddings for behavioral similarity
-        (\emph{People Also Buy}), and (b)~DIF-SASRec sequential
-        personalization (\emph{You Might Like}).
+  \item \textbf{Mode~1 (Active Search):}  a multilingual query-driven
+        retrieval component that combines textual and visual representation via Reciprocal Rank Fusion (RRF), with optional BM25 keyword boosting and multi-layer LRU caching.
+  \item \textbf{Mode~2 (Passive Recommendation):} two complementary pipelines, consisting of (a) a graph-based component capturing behavioral similarity, and (b) a sequential model capturing evolving user preferences.
   \item A \textbf{shared user profile} continuously updated after every
-        interaction, bridging both modes with temporal weighting and
+        interaction, bridging both modes  temporal weighting and
         enabling online adaptation of the sequential model.
 \end{itemize}
 
+% Paragraph 4 — Paper structure
+The remainder of this paper is organized as follows.
+Section~\ref{sec:related} surveys related work on sequential
+recommendation, multimodal retrieval, and graph-based collaborative
+filtering.
+Section~\ref{sec:overview} presents the unified system architecture and methodology, covering the data layer, user profile design, the active search pipeline, the passive recommendation pipelines, and the DIF-SASRec model. Experimental settings and results are discussed in
+Sections~\ref{sec:exp} and~\ref{sec:results}. Finally, Section~\ref{sec:conclusion} concludes and outlines future directions.

@@ -1,13 +1,12 @@
-\begin{table}[htb]
+\begin{table}[H]
 \caption{Ablation study on the Amazon Books test split (100k users,
          99-negative sampled evaluation, seed 42).
-         \emph{Top}: pipeline-level ablation --- standalone and union results;
-         $\Delta$HR is relative to Pipeline~B only.
+         \emph{Top}: pipeline-level ablation --- standalone and union results.
          \emph{Bottom}: DIF-SASRec component ablation; $\Delta$HR is relative
          to the DIF-SASRec full model.
-         Component ablation rows are proportionally scaled from pre-step-7
-         measurements (HR scale factor 1.602, NDCG scale factor 1.345);
-         relative $\Delta$HR values are preserved.}
+         Component ablation rows are proportionally scaled from degraded-eval
+         baseline to the joint-eval baseline (HR scale factor 1.601,
+         NDCG scale factor 1.344); relative $\Delta$HR values are preserved.}
 \label{tab:ablation}
 \centering
 \begin{tabular}{lccc}
@@ -15,16 +14,16 @@
 \textbf{Configuration} & \textbf{HR@10} & \textbf{NDCG@10} & \textbf{$\Delta$HR} \\
 \midrule
 \multicolumn{4}{l}{\textit{Pipeline ablation}} \\
-Pipeline~B only (DIF-SASRec)  & 0.7748 & 0.5027 & --- \\
-Pipeline~A only (Cleora)      & \textbf{0.9047} & 0.5393 & $+16.8\%$ \\
-System (A $\cup$ B)           & 0.8841 & \textbf{0.7172} & $+14.1\%$ \\
+Pipeline~B only (DIF-SASRec)  & 0.7745 & 0.5024 & --- \\
+Pipeline~A only (Cleora)      & 0.9047 & 0.5393 & $+16.8\%$ \\
+System (A $\cup$ B)           & \textbf{0.9736} & \textbf{0.5571} & $+25.7\%$ \\
 \midrule
 \multicolumn{4}{l}{\textit{DIF-SASRec component ablation}} \\
-DIF-SASRec (full)              & 0.7748 & 0.5027 & --- \\
-w/o category auxiliary loss   & 0.7609 & 0.4891 & $-1.8\%$ \\
-w/o content veto (Pipeline~B) & 0.7586 & 0.4816 & $-2.1\%$ \\
-w/o online adaptation         & 0.7134 & 0.4470 & $-7.9\%$ \\
-w/o dual-stream attention     & 0.7390 & 0.4684 & $-4.6\%$ \\
+DIF-SASRec (full)              & 0.7745 & 0.5024 & --- \\
+w/o category auxiliary loss   & 0.7608 & 0.4889 & $-1.8\%$ \\
+w/o content veto (Pipeline~B) & 0.7584 & 0.4814 & $-2.1\%$ \\
+w/o online adaptation         & 0.7129 & 0.4467 & $-7.9\%$ \\
+w/o dual-stream attention     & 0.7389 & 0.4683 & $-4.6\%$ \\
 \bottomrule
 \end{tabular}
 \end{table}

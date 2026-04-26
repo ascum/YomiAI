@@ -16,22 +16,16 @@ SASRec~\cite{kang2018self} replaces recurrent encoders with causal
 self-attention, establishing a strong benchmark for next-item prediction.
 BERT4Rec~\cite{sun2019bert4rec} extends this with bidirectional masked
 modeling for richer sequence representations.
-Both models are, however, fundamentally \emph{ID-based}: each item is
-represented by a learned lookup embedding indexed by an integer identifier.
-This design causes complete retrieval failure for catalog items absent from
-the training set — the item-level cold-start problem — and precludes
-zero-shot generalization to new or tail-end items without retraining.
+Both are fundamentally \emph{ID-based}: each item is a learned lookup
+embedding, causing retrieval failure for unseen items (the cold-start problem)
+and precluding zero-shot generalization without retraining.
 
 DIF-SASRec~\cite{xie2022difsr} partially mitigates this by decoupling item
-IDs, attribute scalars, and content signals into separate attention streams,
-enabling finer-grained preference modeling.
-Nevertheless, the auxiliary features remain \emph{supplementary} to the ID
-embedding rather than replacing it; the model still requires every item to
-carry a pre-assigned training-time identifier and offers no mechanism for
-reasoning over items outside its vocabulary.
-Furthermore, all three models are trained offline, incur complete inference
-failure for unseen IDs, and support neither multilingual queries nor
-real-time per-user adaptation at serving time.
+IDs, attributes, and content into separate attention streams, but auxiliary
+features remain \emph{supplementary} to the ID embedding; the model still
+requires a training-time identifier for every item.
+All three models are trained offline, fail on unseen IDs, and support neither
+multilingual queries nor real-time adaptation.
 
 % -------------------------------------------------------------------
 \subsection{Dense and Multimodal Retrieval}
@@ -39,48 +33,48 @@ real-time per-user adaptation at serving time.
 %          noted English-centric pre-training as a deployment barrier; clarified
 %          the gap between dense retrieval and behavioral graph integration.
 % -------------------------------------------------------------------
-Contrastive vision--language models, exemplified by CLIP~\cite{radford2021clip},
-establish strong cross-modal alignment through large-scale paired pre-training,
-enabling direct comparison of image and text embeddings in a shared latent space.
-Their principal limitation for personalised retrieval is statelessness: CLIP
-encodes each query independently, with no mechanism to incorporate user
-interaction history or preference evolution.
-Its pre-training corpus is also predominantly English, constraining
-cross-lingual effectiveness in multilingual deployments.
+CLIP~\cite{radford2021clip} establishes strong cross-modal alignment via
+large-scale paired pre-training, enabling direct image--text comparison in a
+shared latent space. Its principal limitation is statelessness: queries are
+encoded independently with no user history, and its predominantly English
+corpus constrains multilingual deployment.
 
-BGE-M3~\cite{chen2024bgem3} significantly extends dense retrieval to
-multilingual, multi-granularity queries and handles both symmetric and
-asymmetric matching tasks.
+BGE-M3~\cite{chen2024bgem3} extends dense retrieval to multilingual,
+multi-granularity queries, handling both symmetric and asymmetric matching.
 Its limitation mirrors CLIP's: purely content-based scoring provides no signal
-about individual co-purchase patterns or behavioral history.
-Prior multimodal recommendation work that combines visual and textual dense
-embeddings does not couple these signals with behavioral graph structure, nor
-does it maintain a persistent user profile that jointly drives query-based
-search and proactive recommendation.
+about co-purchase patterns or behavioral history.
+Prior multimodal work combining visual and textual embeddings does not couple
+these signals with behavioral graph structure or maintain a persistent user
+profile shared across search and recommendation.
 
 % -------------------------------------------------------------------
 \subsection{Graph-Based Collaborative Filtering}
 % CHANGED: Added catalog-coverage limitation for Cleora (375k / 3.08M);
 %          identified query-agnostic behavior as a weakness for active search.
+%          Added NGCF, LightGCN, PinSage as representative graph-based methods.
 % -------------------------------------------------------------------
-Graph-based approaches learn item representations from co-purchase or
-co-interaction edges.
-Conventional neural collaborative filtering requires explicit user--item
-factorization matrices, incurring memory and compute costs that scale with
-catalog size and precluding deployment over millions of items without
-approximate compression.
+Graph-based methods learn from co-purchase or co-interaction edges, evolving
+from early factorization to modern graph neural networks (GNNs).
+NGCF~\cite{wang2019ngcf} propagates embeddings through a bipartite interaction
+graph via multi-hop convolutions, capturing high-order connectivity.
+LightGCN~\cite{he2020lightgcn} removes non-linear activations and feature
+transformations, showing that linear aggregation achieves superior accuracy
+with fewer parameters.
+PinSage~\cite{ying2018pinsage} scales GNN recommendation to billion-node
+graphs via random-walk sampling, demonstrating industrial viability.
+Despite these advances, GNN methods require aggregating over the full
+interaction graph, incurring memory and compute costs that grow with catalog
+size, and typically mandate GPU resources.
+
+Conventional neural CF requires explicit factorization matrices, precluding
+deployment over millions of items without approximations.
 Cleora~\cite{cleora2021} avoids these costs via deterministic Markov-chain
-propagation over the co-occurrence graph, producing stable behavioral
-embeddings without matrix factorization or GPU training.
-This makes it attractive for catalog-scale deployment, but it carries a
-significant coverage constraint: embeddings can only be constructed for items
-that appear in at least one co-purchase edge.
-In our setting, this covers 375k of 3.08M catalog items (12.2\%),
-leaving the remainder inaccessible to graph-based retrieval.
-Moreover, graph methods are inherently \emph{query-agnostic}: they return
-the same behavioral neighborhood for a given item regardless of the user's
-typed query, making them unsuitable as a standalone solution for intent-driven
-active search.
+propagation, producing stable embeddings without factorization or GPU training.
+A significant coverage constraint remains: embeddings require at least one
+co-purchase edge, covering 375k of 3.08M catalog items (12.2\%).
+Graph methods are also \emph{query-agnostic}: they return the same
+neighborhood regardless of the typed query, making them unsuitable as a
+standalone active search solution.
 
 % -------------------------------------------------------------------
 \subsection{Hybrid Retrieval Systems}
@@ -89,19 +83,16 @@ active search.
 % -------------------------------------------------------------------
 Hybrid recommenders that combine behavioral and content signals have been
 widely studied, but existing systems share three structural limitations.
-First, they treat retrieval as a single unified pipeline, with no architectural
-separation between user-initiated search (active mode) and system-initiated
-suggestions (passive mode) — a distinction critical for conversational or
-multi-touch interfaces.
-Second, most systems fuse at most two modalities at inference time and assume a
-static user representation that is not updated between requests.
-Third, user state is maintained implicitly through the model's training
-distribution rather than as an explicitly persisted, interaction-time-updated
-embedding that feeds both the query and the recommendation path.
-No existing system in this space simultaneously supports multilingual free-text
-and image-based active search, behavioral-graph and sequential-model passive
-recommendations, and a shared continuously-updated user profile connecting
-the two modes.
+First, retrieval is a single pipeline with no separation between user-initiated
+search and system-initiated suggestions, a distinction critical for
+conversational interfaces.
+Second, most systems fuse at most two modalities and assume a static user
+representation not updated between requests.
+Third, user state is maintained implicitly through training rather than as an
+explicitly persisted embedding updated after each interaction.
+To our knowledge, no existing system simultaneously supports multilingual and
+image-based active search, behavioral-graph and sequential passive
+recommendations, and a shared continuously-updated user profile.
 
 % -------------------------------------------------------------------
 \subsection{Text Encoders for Item Retrieval and Evaluation Methodology}
@@ -112,17 +103,33 @@ BLaIR~\cite{hou2024amazon} fine-tunes a RoBERTa-Large backbone on
 (review\,text, item) contrastive pairs, yielding item embeddings aligned
 with review-style queries of moderate length.
 Two limitations arise.
-First, the model is English-only and degrades on short keyword queries that
-fall outside the review-text distribution — a direct consequence of training
-on a narrowly distributed positive-pair corpus.
-Second, a systematic \emph{evaluation-bias} problem emerges whenever benchmark
-clicks are collected from a live system powered by the same encoder under test:
-held-out items are structurally correlated with that encoder's embedding space,
-causing sampled-evaluation metrics (HR@10, NDCG@10) to favour the legacy
-encoder by construction.
-We address this in our encoder comparison (Section~\ref{ssec:encoder}) by
-supplementing sampled evaluation with live text query retrieval quality ---
-genre-precision@10 over 22 labelled queries spanning short, medium, long, and
-Vietnamese groups --- where no such circular bias applies.
+First, the model is English-only and degrades on short keyword queries outside
+the review-text distribution.
+Second, an \emph{evaluation-bias} problem arises when benchmark clicks are
+collected from a system using the same encoder: held-out items are structurally
+correlated with that encoder, inflating sampled-evaluation metrics.
+We address this in Section~\ref{ssec:encoder} by supplementing sampled
+evaluation with live text retrieval quality (genre-precision@10 over 22
+labelled queries) where no circular bias applies.
 
-\FloatBarrier
+% -------------------------------------------------------------------
+\subsection{Summary: Gaps Motivating This Work}
+% NEW: Synthesis paragraph connecting surveyed limitations to our contributions.
+% -------------------------------------------------------------------
+The surveyed literature reveals four recurring gaps.
+\textit{(i)~ID-bound sequential models} (SASRec, BERT4Rec, DIF-SASRec) cannot
+generalize to unseen items in a long-tail catalog without retraining, imposing
+a hard ceiling on cold-start coverage.
+\textit{(ii)~Stateless dense retrievers} (CLIP, BGE-M3) return relevant results
+but are oblivious to user identity and interaction history.
+\textit{(iii)~Behavioral graph methods} (Cleora) capture strong co-purchase
+signals but cover only a fraction of the catalog and are insensitive to the
+content or language of a typed query.
+\textit{(iv)~Existing hybrid systems} collapse user-issued queries and
+system suggestions into one pipeline, preventing independent optimization
+of each mode.
+Our system addresses all four gaps: BGE-M3 content embeddings replace item
+IDs for zero-shot catalog coverage; complementary pipelines with RRF fuse
+textual, visual, and behavioral signals; a persistent temporally-weighted
+user profile bridges both modes; and NLLB-200 routing enables multilingual
+deployment.

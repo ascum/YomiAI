@@ -1,6 +1,3 @@
-\section{Methodology}
-\label{sec:method}
-
 \subsection{Mode 1: Active Search}
 \label{ssec:active}
 
@@ -11,21 +8,19 @@ the system produces a ranked list via:
 The system supports queries in 19 languages: Vietnamese, French, German,
 Spanish, Chinese, Japanese, Korean, Arabic, Portuguese, Russian, Italian,
 Thai, Indonesian, Dutch, Polish, Turkish, Ukrainian, Hindi, and Swedish.
-Lingua\footnote{\url{https://github.com/pemistahl/lingua-py}} detects the source language in under 1\,ms.
-Non-English queries are translated to English by NLLB-200-Distilled-600M~\cite{costa2022nllb}
-using a two-tier strategy: a greedy pass ($\text{num\_beams}=1$, $\sim$16\,ms)
-followed by a beam-search fallback ($\text{num\_beams}=4$, $\sim$30\,ms) only
-when the greedy output retains untranslated source tokens.
-English queries and unsupported languages bypass translation entirely.
-All translation results are stored in an in-process LRU cache (capacity 2\,048
-entries); repeat queries cost 0\,ms regardless of language.
+Lingua\footnote{\url{https://github.com/pemistahl/lingua-py}} detects source
+language in under 1\,ms.
+Non-English queries are translated by NLLB-200-Distilled-600M~\cite{costa2022nllb}
+via a two-tier strategy: greedy ($\text{num\_beams}=1$, $\sim$16\,ms) with
+beam-search fallback ($\text{num\_beams}=4$, $\sim$30\,ms) when the greedy
+output retains untranslated tokens. Translation results are cached (2\,048
+entries); repeat queries cost 0\,ms.
 
 \paragraph{Encoding.}
 Text query: $\mathbf{e}_t = \text{BGE-M3}(q_t) \in \mathbb{R}^{1024}$.
 Image query: $\mathbf{e}_i = \text{CLIP}(q_i) \in \mathbb{R}^{512}$.
-BGE-M3 inference is wrapped in an LRU cache (capacity 4\,096 entries) keyed
-on the translated query string, so repeated or structurally identical queries
-skip GPU inference entirely and are served from CPU RAM in under 0.1\,ms.
+BGE-M3 inference is cached (4\,096 entries); repeated queries skip GPU
+inference and are served from CPU RAM in under 0.1\,ms.
 
 \paragraph{Retrieval.}
 FAISS~\cite{johnson2019faiss} HNSW search retrieves top-$K$ candidates from each index independently,
@@ -82,9 +77,8 @@ The top-$N$ items by $s_{\text{RRF}}$ are returned with metadata.
 \subsection{DIF-SASRec Model}
 \label{ssec:difsasrec}
 
-We adapt DIF-SASRec~\cite{xie2022difsr} to operate in a content-ID-free setting.
-Each item is represented by its BGE-M3 embedding projected to 512 dimensions,
-eliminating ID lookup tables.
+We adapt DIF-SASRec~\cite{xie2022difsr} to a content-ID-free setting,
+representing each item as its BGE-M3 embedding projected to 512 dimensions.
 
 \paragraph{Architecture.}
 The model consists of:
@@ -96,17 +90,15 @@ and category, fused by a learnable scalar $\alpha$, and
 Total parameters: 12.4M.
 
 \paragraph{Training.}
-We train on 100k users from Amazon Books with an 80/20 temporal split.
-Sampled softmax loss with 512 negatives per step scales to the 3M-item catalog.
-An auxiliary category classification loss with weight $\lambda = 0.1$
-stabilizes genre-level understanding.
-We use AdamW~\cite{loshchilov2019decoupled} ($\text{lr}=10^{-3}$, $\text{wd}=0.01$) with linear warmup
-(2 epochs) and cosine decay over 30 epochs, batch size 2048 with AMP float16.
+Trained on 100k users (80/20 temporal split), sampled softmax with 512
+negatives per step scales to the 3M-item catalog. An auxiliary category loss
+($\lambda = 0.1$) stabilizes genre-level understanding.
+We use AdamW~\cite{loshchilov2019decoupled} ($\text{lr}=10^{-3}$,
+$\text{wd}=0.01$) with linear warmup (2 epochs), cosine decay over 30 epochs,
+batch size 2048, and AMP float16.
 
 \paragraph{Online adaptation.}
-At inference, each user's agent fine-tunes on a single interaction step via
-back-propagation before each recommendation, enabling real-time personalization
-without retraining the full model.
-An \textbf{AgentPool} of 8 independent model instances handles concurrent
-requests safely, each holding a pretrained weight snapshot in CPU RAM for
-cold-start initialization.
+At inference, each user's agent fine-tunes on a single interaction step before
+recommendation, enabling real-time personalization.
+An \textbf{AgentPool} of 8 model instances handles concurrent requests, each
+holding a pretrained weight snapshot in CPU RAM for cold-start initialization.

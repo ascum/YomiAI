@@ -442,67 +442,123 @@ def eval_full(strategy, eval_users, k, max_users, logger):
 
 
 
-# ─── Complementarity ──────────────────────────────────────────────────────────
+# ─── Joint evaluation (single pass, shared candidates) ────────────────────────
 
-def eval_complementarity(strategy_a, strategy_b, eval_users, neg_pool_asins,
-                          n_neg, k, max_users, logger):
+def eval_joint(strategy_a, strategy_b, eval_users, all_asins, neg_pool_asins,
+               n_neg, k, max_users, logger):
     """
-    Per-user 2×2 hit matrix: did Pipeline A hit? did Pipeline B hit?
+    Single-pass joint evaluation of two strategies on shared per-user candidates.
 
-    Both strategies score the same shuffled candidate pool so the results
-    are directly comparable and the combined OR hit is consistent with the
-    main eval_sampled numbers.
+    Negatives are sampled ONCE per user and both strategies score the same
+    candidate pool, so individual HR, union HR = P(hit_A OR hit_B), and the
+    complementarity 2x2 matrix are all internally consistent.
 
-    Returns (counts_dict, n_evaluated, elapsed_s) where counts_dict has
-    keys 'aa' (both hit), 'ab' (A only), 'ba' (B only), 'bb' (neither).
+    Union NDCG is computed over the deduplicated union list
+    [ranked_a[:k] + ranked_b[:k]] (A's order preserved, B fills gaps),
+    matching how the live system presents results.
+
+    Returns (result_a, result_b, union_metrics, counts, n, elapsed) where
+    result_* = (hr5, hr10, ndcg10, mrr10, n_users, elapsed_s).
     """
-    counts = {"aa": 0, "ab": 0, "ba": 0, "bb": 0}
-    users  = eval_users[:max_users] if max_users else eval_users
-    t0     = time.time()
-    logger.info(f"Complementarity  n_users={len(users):,}  k={k}")
+    a_hr5, a_hr10, a_ndcg10, a_mrr10 = [], [], [], []
+    b_hr5, b_hr10, b_ndcg10, b_mrr10 = [], [], [], []
+    u_hr10, u_ndcg10 = [], []
+    counts      = {"aa": 0, "ab": 0, "ba": 0, "bb": 0}
+    all_asins_s = set(all_asins)
+    users       = eval_users[:max_users] if max_users else eval_users
+    n_users     = len(users)
+    t0          = time.time()
+    skipped     = 0
+    LOG_EVERY   = max(1, n_users // 20)
 
-    for user in users:
+    logger.info(f"[Joint A+B] sampled eval  n_neg={n_neg}  users={n_users:,}")
+
+    for i, user in enumerate(users):
         train  = user.get("train_clicks", [])
         test   = user.get("test_clicks",  [])
         if not train or not test:
+            skipped += 1
             continue
         target = test[0]
-        seen   = set(train) | set(test)
-        negs   = [a for a in random.sample(neg_pool_asins,
-                  min(n_neg * 3, len(neg_pool_asins))) if a not in seen][:n_neg]
+        if target not in all_asins_s:
+            skipped += 1
+            continue
+
+        seen = set(train) | set(test)
+        negs = [a for a in random.sample(neg_pool_asins, min(n_neg * 3, len(neg_pool_asins)))
+                if a not in seen][:n_neg]
         if len(negs) < n_neg // 2:
+            skipped += 1
             continue
 
         candidates = [target] + negs
-        # shuffle removed — was causing random-state interference analogous
-        # to the main eval_sampled shuffle that was reverted on 2026-04-26
+
         sa = strategy_a.score_candidates(train, candidates)
         sb = strategy_b.score_candidates(train, candidates)
 
-        ranked_a = sorted(candidates, key=lambda a: sa.get(a, 0.0), reverse=True)
-        ranked_b = sorted(candidates, key=lambda a: sb.get(a, 0.0), reverse=True)
+        ranked_a = sorted(candidates, key=lambda x: sa.get(x, 0.0), reverse=True)
+        ranked_b = sorted(candidates, key=lambda x: sb.get(x, 0.0), reverse=True)
 
+        # individual metrics
+        a_hr5.append(hit_rate(ranked_a, target, 5))
+        a_hr10.append(hit_rate(ranked_a, target, 10))
+        a_ndcg10.append(ndcg(ranked_a, target, 10))
+        a_mrr10.append(mrr(ranked_a, target, 10))
+
+        b_hr5.append(hit_rate(ranked_b, target, 5))
+        b_hr10.append(hit_rate(ranked_b, target, 10))
+        b_ndcg10.append(ndcg(ranked_b, target, 10))
+        b_mrr10.append(mrr(ranked_b, target, 10))
+
+        # union hit: target in EITHER pipeline's top-k (matches live system behaviour)
+        # union_list preserves A's order then B's unique additions for NDCG
+        union_list = list(dict.fromkeys(ranked_a[:k] + ranked_b[:k]))
+        u_hr10.append(1.0 if (target in ranked_a[:k] or target in ranked_b[:k]) else 0.0)
+        u_ndcg10.append(ndcg(union_list, target, len(union_list)))
+
+        # complementarity 2x2
         hit_a = target in ranked_a[:k]
         hit_b = target in ranked_b[:k]
-
         if   hit_a and     hit_b: counts["aa"] += 1
         elif hit_a and not hit_b: counts["ab"] += 1
         elif not hit_a and hit_b: counts["ba"] += 1
         else:                     counts["bb"] += 1
 
+        if (i + 1) % LOG_EVERY == 0:
+            done = len(a_hr10)
+            logger.info(
+                f"  [Joint A+B] {i+1:>6,}/{n_users:,}  "
+                f"A HR@10={sum(a_hr10)/done:.4f}  "
+                f"B HR@10={sum(b_hr10)/done:.4f}  "
+                f"Union HR@10={sum(u_hr10)/done:.4f}  "
+                f"{time.time()-t0:.0f}s"
+            )
+
+    n       = len(a_hr10) or 1
     elapsed = time.time() - t0
-    n = sum(counts.values()) or 1
+
     logger.info(
-        f"Complementarity done  n={n:,}  {elapsed:.1f}s  "
-        f"A∩B={counts['aa']:,}  A-only={counts['ab']:,}  "
+        f"[Joint A+B] done  n={n:,}  skipped={skipped}  elapsed={elapsed:.1f}s  "
+        f"A HR@10={sum(a_hr10)/n:.4f}  B HR@10={sum(b_hr10)/n:.4f}  "
+        f"Union HR@10={sum(u_hr10)/n:.4f}  Union NDCG@10={sum(u_ndcg10)/n:.4f}"
+    )
+    n_comp = sum(counts.values()) or 1
+    logger.info(
+        f"Complementarity  A∩B={counts['aa']:,}  A-only={counts['ab']:,}  "
         f"B-only={counts['ba']:,}  neither={counts['bb']:,}"
     )
-    return counts, n, elapsed
+
+    result_a     = (sum(a_hr5)/n, sum(a_hr10)/n, sum(a_ndcg10)/n, sum(a_mrr10)/n, n, elapsed)
+    result_b     = (sum(b_hr5)/n, sum(b_hr10)/n, sum(b_ndcg10)/n, sum(b_mrr10)/n, n, elapsed)
+    union_result = (sum(u_hr10)/n, sum(u_ndcg10)/n, n, elapsed)
+
+    return result_a, result_b, union_result, counts, n_comp, elapsed
 
 
-def print_complementarity_table(counts: dict, n: int, k: int):
+def print_complementarity_table(counts: dict, n: int, k: int, union_hr10: float = None):
     aa, ab, ba, bb = counts["aa"], counts["ab"], counts["ba"], counts["bb"]
-    combined_hr = (aa + ab + ba) / n
+    # use the joint-eval union HR if supplied; fall back to counting from matrix
+    union_hr = union_hr10 if union_hr10 is not None else (aa + ab + ba) / n
 
     print()
     print(bold(f"  Pipeline complementarity  (k={k}, n={n:,})"))
@@ -516,11 +572,11 @@ def print_complementarity_table(counts: dict, n: int, k: int):
           f"{f'{ba:,}  ({ba/n*100:.1f}%)':>14}  "
           f"{dim(f'{bb:,}  ({bb/n*100:.1f}%)'):>23}")
     print("  " + "─" * 64)
-    b_rescues_a = ba / (ba + bb) if (ba + bb) else 0.0
-    a_rescues_b = ab / (ab + bb) if (ab + bb) else 0.0
-    print(f"  A rescues {b_rescues_a*100:.1f}% of B misses  |  "
-          f"B rescues {a_rescues_b*100:.1f}% of A misses")
-    print(f"  Combined HR@{k} = {green(f'{combined_hr:.4f}')}")
+    a_rescues_b = ab / (ab + bb) if (ab + bb) else 0.0   # A-only / B-misses
+    b_rescues_a = ba / (ba + bb) if (ba + bb) else 0.0   # B-only / A-misses
+    print(f"  A rescues {a_rescues_b*100:.1f}% of B misses  |  "
+          f"B rescues {b_rescues_a*100:.1f}% of A misses")
+    print(f"  Union HR@{k} = {green(f'{union_hr:.4f}')}")
     print()
 
 
@@ -752,8 +808,7 @@ def main():
             retriever, cat_encoder, emb_cache,
             pretrained_path=pretrained_path if os.path.exists(pretrained_path) else None,
         )
-        combined     = CombinedStrategy(pipeline_a, dif_strategy)
-        strategies   = [pipeline_a, dif_strategy, combined]
+        strategies   = []   # eval_joint handles A+B in one pass; no sequential strategy list
     else:
         dif_strategy = DIFSASRecStrategy(
             retriever, cat_encoder, emb_cache,
@@ -775,31 +830,44 @@ def main():
         baseline_hr10   = 10 / (args.negatives + 1)
         baseline_ndcg10 = sum(1 / math.log2(i + 2) for i in range(10)) / (args.negatives + 1)
 
-        for s in strategies:
-            print(f"  {bold(s.name)} ...", end="", flush=True)
-            r = eval_sampled(s, eval_users, all_asins, neg_pool_asins,
-                             n_neg=args.negatives, k=args.k,
-                             max_users=args.max_users, logger=logger)
-            hr5, hr10, nd, mr, n, t = r
-            print(f"\r  {bold(s.name):<22}  done  {green(f'HR@10={hr10:.4f}')}"
-                  f"  NDCG@10={nd:.4f}  {t:.1f}s")
-            results_map[s.name] = {
-                "hr5": hr5, "hr10": hr10, "ndcg10": nd, "mrr10": mr,
-                "users": n, "time_s": t,
-            }
-
-        print_results_table(results_map, args.mode, args.negatives, args.k)
-
-        # ── Complementarity (only when --combined and sampled mode) ──────────
-        if args.combined and args.mode == "sampled":
-            print(bold("\n  Computing complementarity table ..."))
-            counts, n_comp, t_comp = eval_complementarity(
-                pipeline_a, dif_strategy, eval_users, neg_pool_asins,
+        if args.combined:
+            # ── Joint pass: single candidate pool per user, A+B evaluated together ──
+            print(bold("\n  Running joint A+B evaluation (shared candidates per user) ..."))
+            r_a, r_b, r_union, counts, n_comp, t_joint = eval_joint(
+                pipeline_a, dif_strategy, eval_users, all_asins, neg_pool_asins,
                 n_neg=args.negatives, k=args.k,
                 max_users=args.max_users, logger=logger,
             )
-            print_complementarity_table(counts, n_comp, args.k)
-            logger.info(f"Complementarity done in {t_comp:.1f}s")
+            u_hr10, u_ndcg10, n_union, _ = r_union
+
+            for name, r in [(pipeline_a.name, r_a), (dif_strategy.name, r_b)]:
+                hr5, hr10, nd, mr, n, t = r
+                print(f"  {bold(name):<22}  HR@10={green(f'{hr10:.4f}')}  NDCG@10={nd:.4f}")
+                results_map[name] = {"hr5": hr5, "hr10": hr10, "ndcg10": nd, "mrr10": mr,
+                                     "users": n, "time_s": t}
+            print(f"  {bold('System (A∪B)'):<22}  HR@10={green(f'{u_hr10:.4f}')}  NDCG@10={u_ndcg10:.4f}")
+            results_map["System (A∪B)"] = {"hr5": 0.0, "hr10": u_hr10, "ndcg10": u_ndcg10,
+                                            "mrr10": 0.0, "users": n_union, "time_s": t_joint}
+
+            print_results_table(results_map, args.mode, args.negatives, args.k)
+            print_complementarity_table(counts, n_comp, args.k, union_hr10=u_hr10)
+            logger.info(f"Joint eval done in {t_joint:.1f}s")
+
+        else:
+            for s in strategies:
+                print(f"  {bold(s.name)} ...", end="", flush=True)
+                r = eval_sampled(s, eval_users, all_asins, neg_pool_asins,
+                                 n_neg=args.negatives, k=args.k,
+                                 max_users=args.max_users, logger=logger)
+                hr5, hr10, nd, mr, n, t = r
+                print(f"\r  {bold(s.name):<22}  done  {green(f'HR@10={hr10:.4f}')}"
+                      f"  NDCG@10={nd:.4f}  {t:.1f}s")
+                results_map[s.name] = {
+                    "hr5": hr5, "hr10": hr10, "ndcg10": nd, "mrr10": mr,
+                    "users": n, "time_s": t,
+                }
+
+            print_results_table(results_map, args.mode, args.negatives, args.k)
 
     else:
         baseline_hr10   = None

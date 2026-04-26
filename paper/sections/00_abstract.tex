@@ -1,23 +1,11 @@
 \begin{abstract}
 % Target: 70–150 words (conference requirement).
 % Cover: problem → approach → key results → impact.
-Next Best Action (NBA) systems traditionally rely on structured transaction
-data, leaving rich multimedia signals — natural language queries, cover
-images, and behavioral traces — underutilized.
-We present a dual-mode multimodal NBA recommendation system for large-scale
-book discovery that mines text and visual data alongside behavioral
-co-occurrence graphs.
-The system fuses BGE-M3 text embeddings and CLIP image embeddings via
-Reciprocal Rank Fusion for active search, and combines Cleora graph
-embeddings with a DIF-SASRec sequential transformer for passive
-personalization — all driven by a shared, continuously updated user profile.
-Evaluated on a 3.08-million-item Amazon Books catalog with 100k user
-histories, the dual-pipeline system achieves HR@10 of 0.7886 (+81\% over
-a content-only baseline), with Pipeline~A rescuing 59\% of DIF-SASRec misses
-and DIF-SASRec rescuing 11\% of Pipeline~A misses.
-The system handles 19 languages via NLLB-200 and serves warm-path queries
-at 34\,ms P50.
+NBA systems typically rely on structured transaction data, failing to exploit multimodal signals such as text, images, and interaction histories, and lack a unified framework for query-driven retrieval and personalized recommendation. We propose a dual-mode multimodal NBA framework integrating active search and passive personalization in a single architecture. It combines multimodal retrieval with two complementary pipelines: a graph-based component for behavioral patterns and a sequential model for evolving user preferences, jointly modeling semantic relevance, behavioral signals, and temporal dynamics.
+On Amazon Books (3.08M items, 100k users), the system achieves HR@10 of 0.7886, outperforming content-based baselines by 81\%, with complementary pipelines recovering each other’s missed predictions.
+
+
 %
 \keywords{next best action, multimodal retrieval, sequential recommendation,
-          DIF-SASRec, BGE-M3, multimedia data mining}
+          multimedia data mining}
 \end{abstract}

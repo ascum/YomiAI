@@ -1,11 +1,12 @@
-\section{System Overview}
+\section{System Architecture and Methodology}
 \label{sec:overview}
+\label{sec:method}
 
 Figure~\ref{fig:arch} illustrates the overall architecture.
-The system is implemented as a FastAPI\footnote{\url{https://fastapi.tiangolo.com/}} service with three layers:
-an \emph{API layer} (routes for search, recommend, interact, profile),
-a \emph{service layer} (business logic for both modes), and a
-\emph{repository layer} (FAISS indices, MongoDB, Cleora embeddings).
+The system is a FastAPI\footnote{\url{https://fastapi.tiangolo.com/}} service
+with three layers: an \emph{API layer} (search, recommend, interact, profile),
+a \emph{service layer} (business logic), and a
+\emph{repository layer} (FAISS, MongoDB, Cleora).
 
 \begin{figure}[htb]
 \centering
