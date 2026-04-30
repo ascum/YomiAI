@@ -2,10 +2,31 @@
 \label{sec:exp}
 
 \subsection{Dataset}
-We use the Amazon Reviews 2023 Books subset~\cite{hou2024amazon}, filtering
-users with fewer than 5 interactions to yield 100k users, 375k graph-covered
-items, and 3.08M catalog items (average sequence: 33.5 clicks).
-The last item per user is held out; the remainder forms the training set.
+We use the Amazon Reviews 2023 Books subset~\cite{hou2024amazon}, a large-scale
+e-commerce benchmark pairing user reviews with item metadata.
+The raw corpus contains 29,475,453 review records and 4,448,181 item metadata
+records (Table~\ref{tab:dataset}).
+We retain users with at least 5 interactions, yielding 100,000 users over a
+3.08M-item catalog; 375,000 items (12.2\%) carry at least one co-purchase edge
+and are covered by the behavioral graph embedding, with an average interaction
+sequence of 33.5 clicks per user.
+
+\input{tables/dataset_stats}
+
+Three distributional properties of the dataset directly inform system design.
+First, item cover images are available for 99.1\% of catalog entries while
+user-uploaded review images appear in only 1.8\% of reviews, motivating
+item-side visual embeddings rather than review-image features.
+Second, approximately 80\% of reviews carry a rating of 4 or 5 stars,
+following the J-shaped positive bias common in e-commerce~\cite{hou2024amazon};
+this skew precludes ratings as a primary relevance signal and motivates
+content-based evaluation.
+Third, review text exhibits a right-skewed length distribution (median 37 words,
+mean 86 words), confirming that most sequences fit within standard transformer
+token budgets without aggressive truncation.
+
+The last interaction of each user is held out as the test item; the remaining
+history forms the training sequence.
 
 \subsection{Evaluation Metrics}
 We report HR@10 and NDCG@10.
