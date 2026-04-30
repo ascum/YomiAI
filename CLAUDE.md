@@ -133,3 +133,6 @@ Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
 2. Use `detect_changes` for code review.
 3. Use `get_affected_flows` to understand impact.
 4. Use `query_graph` pattern="tests_for" to check coverage.
+
+## Custom Skills
+- **Academic Formatting:** To format text with strict LaTeX citation rules (`\cite{}`) and prioritize recent papers, refer to the rules in `.claude/skills/format-latex.md`. You can trigger this explicitly when the user types `/format-latex`.
