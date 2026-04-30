@@ -3,10 +3,9 @@
 \label{sec:method}
 
 Figure~\ref{fig:arch} illustrates the overall architecture.
-The system is a FastAPI\footnote{\url{https://fastapi.tiangolo.com/}} service
-with three layers: an \emph{API layer} (search, recommend, interact, profile),
+The system exposes a REST API\footnote{\url{https://fastapi.tiangolo.com/}} with three layers: an \emph{API layer} (search, recommend, interact, profile),
 a \emph{service layer} (business logic), and a
-\emph{repository layer} (FAISS, MongoDB, Cleora).
+\emph{data layer} (ANN indices, behavioral graph embeddings, and a document store).
 
 \begin{figure}[htb]
 \centering
@@ -62,7 +61,7 @@ a \emph{service layer} (business logic), and a
 
 %-- retrieval layer
 \node[idx] (ftx) at (-5.90, -3.10)  {FAISS\\text};
-\node[idx] (tan) at (-4.10, -3.10)  {Tantivy\\BM25};
+\node[idx] (tan) at (-4.10, -3.10)  {BM25\\Index};
 \node[idx] (fim) at (-2.60, -1.95)  {FAISS\\image};
 
 %-- fusion
@@ -103,7 +102,7 @@ a \emph{service layer} (business logic), and a
 
 %-- Pipeline A
 \node[font=\small\itshape, text=gray!70] at (1.70, -0.87) {Pipeline A};
-\node[ml]  (cle) at (1.70, -1.95)  {Cleora FAISS};
+\node[ml]  (cle) at (1.70, -1.95)  {Behavioral\\[-2pt]Graph Index};
 \node[proc](vt1) at (1.70, -3.10)  {Content veto};
 \node[out, minimum width=2.4cm] (pab) at (1.70, -4.20)
   {\emph{People Also Buy}};
@@ -151,12 +150,11 @@ a \emph{service layer} (business logic), and a
 
 \subsection{Data Layer}
 The item catalog contains 3.08 million Amazon Books entries.
-Text embeddings (1024-dim, BGE-M3) and image embeddings (512-dim, CLIP) are
-indexed in HNSW-based FAISS structures for approximate nearest-neighbor
-search.
-Behavioral embeddings (1024-dim, Cleora) cover 375k items with co-purchase
-history.
-A Tantivy\footnote{\url{https://github.com/quickwit-oss/tantivy}} inverted index supports BM25~\cite{robertson1994okapi} keyword retrieval.
+Text embeddings (1024-dim, BGE-M3~\cite{chen2024bgem3}) and image embeddings (512-dim, CLIP~\cite{radford2021clip}) are
+indexed in HNSW-based approximate nearest-neighbor structures for dense retrieval.
+A co-purchase behavioral graph embedding scheme (Cleora~\cite{cleora2021}) covers 375k items
+with at least one co-purchase edge.
+An inverted index\footnote{\url{https://github.com/quickwit-oss/tantivy}} supports BM25~\cite{robertson1994okapi} keyword retrieval.
 
 \subsection{User Profile}
 Each user maintains a persistent MongoDB document storing:

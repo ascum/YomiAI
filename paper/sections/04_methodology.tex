@@ -25,7 +25,7 @@ inference and are served from CPU RAM in under 0.1\,ms.
 \paragraph{Retrieval.}
 FAISS~\cite{johnson2019faiss} HNSW search retrieves top-$K$ candidates from each index independently,
 yielding ranked lists $L_t$ and $L_i$.
-A Tantivy BM25 search over tokenized titles and descriptions yields $L_k$.
+A BM25 keyword search over tokenized titles and descriptions yields $L_k$.
 
 \paragraph{Fusion.}
 Reciprocal Rank Fusion (RRF)~\cite{cormack2009rrf} combines the three lists:
@@ -46,7 +46,7 @@ The top-$N$ items by $s_{\text{RRF}}$ are returned with metadata.
 
 \begin{enumerate}
   \item \textbf{Behavioral scouting.} The user's 5 most recent interactions
-        seed a multi-query FAISS search in Cleora space, yielding 50 candidates.
+        seed a multi-query search in the behavioral embedding space, yielding 50 candidates.
   \item \textbf{Content veto.} Each candidate is scored against the user's
         aggregated BGE-M3 and CLIP profile vectors.
         Candidates satisfying
@@ -65,7 +65,7 @@ The top-$N$ items by $s_{\text{RRF}}$ are returned with metadata.
 \label{sssec:pipelineB}
 
 \begin{enumerate}
-  \item \textbf{Candidate generation.} HNSW search on BGE-M3 embeddings of
+  \item \textbf{Candidate generation.} HNSW search on text embeddings of
         the user's recent items retrieves 200 candidates.
   \item \textbf{Content veto.} Same threshold as Pipeline A.
   \item \textbf{Sequential scoring.} DIF-SASRec scores each candidate as the
@@ -100,5 +100,5 @@ batch size 2048, and AMP float16.
 \paragraph{Online adaptation.}
 At inference, each user's agent fine-tunes on a single interaction step before
 recommendation, enabling real-time personalization.
-An \textbf{AgentPool} of 8 model instances handles concurrent requests, each
+A concurrent model pool of 8 instances handles parallel requests, each
 holding a pretrained weight snapshot in CPU RAM for cold-start initialization.

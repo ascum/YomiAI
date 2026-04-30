@@ -7,9 +7,9 @@ sampled evaluation protocol (99 random negatives, seed 42).
 
 \input{tables/main_results}
 
-\paragraph{Pipeline~A (Cleora + BGE-M3).}
+\paragraph{Pipeline~A (Behavioral Graph + BGE-M3).}
 Pipeline~A achieves HR@10 = \textbf{0.9047} (NDCG@10 = 0.5393), a
-$+108.2\%$ improvement over Content-KNN (0.4346), combining Cleora behavioral
+$+108.2\%$ improvement over Content-KNN (0.4346), combining behavioral
 graph candidates with BGE-M3 profile similarity ranking.
 
 \paragraph{DIF-SASRec (Pipeline~B).}
@@ -22,7 +22,7 @@ The union achieves \textbf{HR@10 = 0.9736} (NDCG@10 = 0.5571).
 Pipeline~A rescues \textbf{88.3\%} of DIF-SASRec misses; DIF-SASRec rescues
 \textbf{72.3\%} of Pipeline~A misses.
 The pipelines serve complementary patterns: Pipeline~A excels on items within
-Cleora's 375k behavioral index, while DIF-SASRec covers items outside that graph.
+the behavioral graph index (375k items), while DIF-SASRec covers items outside that graph.
 
 \input{tables/complementarity}
 
@@ -51,7 +51,7 @@ ablations.
 Pipeline~A alone (+16.8\% over Pipeline~B) demonstrates that behavioral
 structure combined with BGE-M3 profile similarity is a powerful retrieval
 signal. The full union adds +7.6\% by incorporating DIF-SASRec for items
-outside Cleora's coverage.
+outside the behavioral graph's coverage.
 
 \paragraph{Category auxiliary loss.}
 Removing the category auxiliary head reduces HR@10 by $1.8\%$, confirming
@@ -88,7 +88,7 @@ confirming HNSW's speedup is independent of caching.
 \paragraph{Warm path.}
 Once warm, P50 drops to \textbf{17\,ms} (internal) / \textbf{34\,ms}
 (E2E) for English. FAISS search falls to 2\,ms; translation and encoding
-are served from LRU caches at under 1\,ms, leaving Tantivy BM25
+are served from LRU caches at under 1\,ms, leaving the BM25 keyword index
 ($\sim$6\,ms) as the bottleneck.
 
 \paragraph{Production characterisation.}
@@ -98,11 +98,11 @@ plus FAISS search ($\sim$2\,ms), yielding a steady-state P50 of 60--80\,ms.
 Repeated queries are served from LRU caches at $<$25\,ms P50.
 
 \subsection{Concurrency and Memory}
-The AgentPool of 8 DIF-SASRec instances sustains 10+ concurrent users
+The concurrent model pool of 8 DIF-SASRec instances sustains 10+ concurrent users
 with no weight corruption (validated at 20 concurrent requests).
-Each agent holds a pretrained snapshot in CPU RAM ($\sim$148\,MB);
+Each instance holds a pretrained snapshot in CPU RAM ($\sim$148\,MB);
 fine-tuned weights occupy GPU memory only for the request duration.
-Total pool footprint is 1.18\,GB, leaving headroom for FAISS indices
+Total pool footprint is 1.18\,GB, leaving headroom for ANN indices
 and encoder models.
 
 \subsection{Encoder Comparison: BLaIR vs.\ BGE-M3}
