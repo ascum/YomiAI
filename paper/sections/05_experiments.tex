@@ -1,7 +1,8 @@
-\section{Experimental Setup}
+\section{Experiments and Results}
 \label{sec:exp}
+\label{sec:results}
 
-\subsection{Dataset}
+\paragraph{Dataset.}
 We use the Amazon Reviews 2023 Books subset~\cite{hou2024amazon}, a large-scale
 e-commerce benchmark pairing user reviews with item metadata.
 The raw corpus contains 29,475,453 review records and 4,448,181 item metadata
@@ -28,7 +29,7 @@ token budgets without aggressive truncation.
 The last interaction of each user is held out as the test item; the remaining
 history forms the training sequence.
 
-\subsection{Evaluation Metrics}
+\paragraph{Evaluation Metrics.}
 We report HR@10 and NDCG@10.
 Following the protocol of SASRec~\cite{kang2018self} and
 DIF-SASRec~\cite{xie2022difsr}, each held-out item is ranked against 99 random
@@ -36,16 +37,16 @@ negatives (random-chance HR@10 = 0.10).
 We also evaluate under a 999-negative protocol (random-chance HR@10 = 0.01)
 to assess robustness (Section~\ref{ssec:robustness}).
 
-\subsection{Baselines}
+\paragraph{Baselines.}
 \input{tables/baselines}
 
-\subsection{Implementation Details}
-All experiments run on a single RTX~5060~Ti (16\,GB).
-DIF-SASRec uses AdamW ($\text{lr}=10^{-3}$, wd~$0.01$), linear warmup
-(2 epochs), cosine decay to $10^{-5}$ over 30 epochs, batch 2\,048, AMP
-float16, 512 sampled softmax negatives, and $\lambda = 0.1$ for the category
-loss.
-FAISS HNSW uses $M=32$, $\text{ef\_construction}=200$, $\text{ef\_search}=128$.
-Cleora uses 3 Markov propagation steps; BGE-M3 and CLIP run in FP16 on GPU;
-BM25 on CPU. The AgentPool holds 8 DIF-SASRec instances (148\,MB each,
-1.18\,GB total).
+% \paragraph{Implementation Details.}
+% All experiments run on a single RTX~5060~Ti (16\,GB).
+% DIF-SASRec uses AdamW ($\text{lr}=10^{-3}$, wd~$0.01$), linear warmup
+% (2 epochs), cosine decay to $10^{-5}$ over 30 epochs, batch 2\,048, AMP
+% float16, 512 sampled softmax negatives, and $\lambda = 0.1$ for the category
+% loss.
+% FAISS HNSW uses $M=32$, $\text{ef\_construction}=200$, $\text{ef\_search}=128$.
+% Cleora uses 3 Markov propagation steps; BGE-M3 and CLIP run in FP16 on GPU;
+% BM25 on CPU. The AgentPool holds 8 DIF-SASRec instances (148\,MB each,
+% 1.18\,GB total).
